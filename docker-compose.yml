@@ -26,6 +26,8 @@ services:
       context: ./plugin-worker
     volumes:
       - ./nova/plugins:/plugins:ro
+    environment:
+      PLUGIN_WORKER_TOKEN: ${NOVA_PLUGIN_WORKER_TOKEN:?Set NOVA_PLUGIN_WORKER_TOKEN in .env}
     expose:
       - "8090"
     healthcheck:
