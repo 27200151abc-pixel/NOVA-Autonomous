@@ -5,6 +5,7 @@ import json
 import operator
 import sqlite3
 import secrets
+from contextlib import contextmanager
 import importlib.util
 from pathlib import Path
 import uuid
@@ -59,23 +60,33 @@ class ApprovalDecision(BaseModel):
     decision: str = Field(pattern="^(approve|reject)$")
 
 
-def db() -> sqlite3.Connection:
-    conn = sqlite3.connect(settings.nova_database_path)
-    conn.execute("""CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        conversation_id TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('user','assistant')),
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL
-    )""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id)")
-    conn.execute("""CREATE TABLE IF NOT EXISTS approvals (
-        id TEXT PRIMARY KEY, tool_name TEXT NOT NULL, arguments TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('pending','executing','approved','rejected','failed')),
-        result TEXT, created_at TEXT NOT NULL, decided_at TEXT
-    )""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status, created_at)")
-    return conn
+@contextmanager
+def db():
+    conn = sqlite3.connect(settings.nova_database_path, timeout=15)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA busy_timeout = 15000")
+        conn.execute("""CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS approvals (
+            id TEXT PRIMARY KEY, tool_name TEXT NOT NULL, arguments TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('pending','executing','approved','rejected','failed')),
+            result TEXT, created_at TEXT NOT NULL, decided_at TEXT
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status, created_at)")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def remember(conversation_id: str, role: str, content: str) -> None:
