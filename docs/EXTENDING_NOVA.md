@@ -58,3 +58,8 @@ Set `NOVA_WORKSPACE_ROOT` to the dedicated directory NOVA may access. The built-
 ## Phase 3 status
 
 The API serves a standalone responsive Arabic-first chat interface at `/`. The frontend uses the persistent conversation ID returned by `/v1/chat` and renders model text as text nodes (not HTML). This is a basic non-streaming chat UI; voice/video, browser automation, and operating-system-level plugin isolation are not implemented yet.
+
+
+## Chat API authentication
+
+The chat endpoint requires a separate `NOVA_CHAT_TOKEN` bearer token. The web chat asks for this token and keeps it in tab-scoped session storage; the owner token is separate and grants access to policy, memory, and approval endpoints. Generate independent random values for both. Do not reuse either token across untrusted deployments.
