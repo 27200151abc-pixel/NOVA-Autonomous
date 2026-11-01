@@ -139,7 +139,8 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
         message = data["choices"][0]["message"]
         calls = message.get("tool_calls") or []
         if calls:
-            messages.append({"role": "assistant", "content": message.get("content") or ""})
+            # Preserve the provider's tool-call envelope so the follow-up request is valid.
+            messages.append({"role": "assistant", **message})
             for call in calls[:4]:
                 fn = call["function"]
                 try:
@@ -148,7 +149,9 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
                     result = f"Tool error: {exc}"
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
             async with httpx.AsyncClient(timeout=settings.nova_timeout_seconds) as client:
-                response = await client.post(url, headers=headers, json={"model": settings.nova_model, "messages": messages})
+                response = await client.post(url, headers=headers, json={
+                    "model": settings.nova_model, "messages": messages, "tools": TOOLS, "tool_choice": "auto"
+                })
                 response.raise_for_status()
                 data = response.json()
         return str(data["choices"][0]["message"].get("content") or "The model returned an empty response.")
