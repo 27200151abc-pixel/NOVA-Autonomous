@@ -204,3 +204,63 @@ def test_chat_api_requires_separate_token(monkeypatch):
         main.require_chat("Bearer owner-secret")
     assert error.value.status_code == 401
     assert main.require_chat("Bearer chat-secret") is None
+
+
+def test_tool_call_budget_is_total_across_rounds(monkeypatch):
+    import asyncio
+    from nova import main
+
+    monkeypatch.setattr(main.settings, "nova_base_url", "https://model.invalid/v1")
+    monkeypatch.setattr(main.settings, "nova_model", "test-model")
+    monkeypatch.setattr(main, "load_policy", lambda: {
+        "enabled_tools": ["calculator"],
+        "enabled_plugins": [],
+        "approval_required": [],
+        "max_tool_calls_per_turn": 2,
+        "max_tool_rounds": 5,
+    })
+    executed = []
+
+    class FakeResponse:
+        def __init__(self, message):
+            self.message = message
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": self.message}]}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.responses = [
+                FakeResponse({"role": "assistant", "tool_calls": [
+                    {"id": "call-1", "function": {"name": "calculator", "arguments": '{"expression":"1+1"}'}},
+                    {"id": "call-2", "function": {"name": "calculator", "arguments": '{"expression":"2+2"}'}},
+                ]}),
+                FakeResponse({"role": "assistant", "tool_calls": [
+                    {"id": "call-3", "function": {"name": "calculator", "arguments": '{"expression":"3+3"}'}},
+                ]}),
+            ]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, *args, **kwargs):
+            return self.responses.pop(0)
+
+    original_run_tool = main.run_tool
+
+    def record_tool(name, arguments):
+        executed.append(arguments["expression"])
+        return str(original_run_tool(name, arguments))
+
+    monkeypatch.setattr(main, "run_tool", record_tool)
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
+
+    reply = asyncio.run(main.ask_model([{"role": "user", "content": "calculate"}]))
+    assert len(executed) == 2
+    assert reply == "NOVA reached the maximum tool-call budget for this turn. Send a follow-up to continue."
