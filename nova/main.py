@@ -339,7 +339,9 @@ async def ask_model(messages: list[dict[str, Any]]) -> str:
         headers["Authorization"] = f"Bearer {settings.nova_api_key}"
     try:
         async with httpx.AsyncClient(timeout=settings.nova_timeout_seconds) as client:
-            for _round in range(load_policy()["max_tool_rounds"]):
+            policy = load_policy()
+            total_tool_calls = 0
+            for _round in range(policy["max_tool_rounds"]):
                 payload = {"model": settings.nova_model, "messages": messages, "tools": active_tool_specs(), "tool_choice": "auto"}
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
@@ -348,7 +350,11 @@ async def ask_model(messages: list[dict[str, Any]]) -> str:
                 calls = message.get("tool_calls") or []
                 if not calls:
                     return str(message.get("content") or "The model returned an empty response.")
-                allowed_calls = calls[:load_policy()["max_tool_calls_per_turn"]]
+                remaining_calls = policy["max_tool_calls_per_turn"] - total_tool_calls
+                if remaining_calls <= 0:
+                    return "NOVA reached the maximum tool-call budget for this turn. Send a follow-up to continue."
+                allowed_calls = calls[:remaining_calls]
+                total_tool_calls += len(allowed_calls)
                 messages.append({"role": "assistant", **{**message, "tool_calls": allowed_calls}})
                 for call in allowed_calls:
                     fn = call["function"]
@@ -418,8 +424,12 @@ def decide_approval(approval_id: str, decision: ApprovalDecision, _: None = Depe
         if status != "pending":
             raise HTTPException(status_code=409, detail=f"Approval is already {status}.")
         if decision.decision == "reject":
-            conn.execute("UPDATE approvals SET status='rejected', result=?, decided_at=? WHERE id=? AND status='pending'",
-                         ("Rejected by owner.", datetime.now(timezone.utc).isoformat(), approval_id))
+            changed = conn.execute(
+                "UPDATE approvals SET status='rejected', result=?, decided_at=? WHERE id=? AND status='pending'",
+                ("Rejected by owner.", datetime.now(timezone.utc).isoformat(), approval_id),
+            ).rowcount
+            if changed != 1:
+                raise HTTPException(status_code=409, detail="Approval is already being processed.")
             return {"id": approval_id, "status": "rejected"}
         changed = conn.execute("UPDATE approvals SET status='executing', decided_at=? WHERE id=? AND status='pending'",
                                (datetime.now(timezone.utc).isoformat(), approval_id)).rowcount
