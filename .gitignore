@@ -8,3 +8,6 @@ __pycache__/
 *.db
 *.sqlite3
 .DS_Store
+
+# User workspace data (never commit private workspace files)
+workspace/
