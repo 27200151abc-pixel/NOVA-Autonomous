@@ -1,0 +1,8 @@
+{
+  "enabled_tools": [
+    "calculator",
+    "current_datetime"
+  ],
+  "approval_required": [],
+  "max_tool_calls_per_turn": 4
+}
