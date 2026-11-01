@@ -116,3 +116,42 @@ def test_approval_queue_executes_only_after_owner_approval(tmp_path, monkeypatch
     with sqlite3.connect(main.settings.nova_database_path) as conn:
         row = conn.execute("SELECT status FROM approvals WHERE id=?", (pending["approval_id"],)).fetchone()
     assert row[0] == "approved"
+
+
+def test_workspace_tools_restrict_paths_and_read_write(tmp_path, monkeypatch):
+    from nova import main
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "note.txt").write_text("hello", encoding="utf-8")
+    monkeypatch.setattr(main.settings, "nova_workspace_root", str(workspace))
+
+    assert main.workspace_read("note.txt")["content"] == "hello"
+    assert main.workspace_list(".")["entries"][0]["name"] == "note.txt"
+    with pytest.raises(ValueError):
+        main.workspace_read("../outside.txt")
+    with pytest.raises(ValueError):
+        main.workspace_write("../outside.txt", "no")
+    assert main.workspace_write("new.txt", "NOVA")["bytes_written"] == 4
+    assert (workspace / "new.txt").read_text(encoding="utf-8") == "NOVA"
+
+
+def test_workspace_write_is_approval_gated_by_default(tmp_path, monkeypatch):
+    import json
+    from nova import main
+
+    policy_file = tmp_path / "policy.json"
+    policy_file.write_text(json.dumps({
+        "enabled_tools": ["workspace_write"],
+        "enabled_plugins": [],
+        "approval_required": ["workspace_write"],
+        "max_tool_calls_per_turn": 2,
+        "max_tool_rounds": 2
+    }), encoding="utf-8")
+    monkeypatch.setattr(main.settings, "nova_policy_path", str(policy_file))
+    monkeypatch.setattr(main.settings, "nova_plugins_dir", str(tmp_path / "no-plugins"))
+    monkeypatch.setattr(main.settings, "nova_database_path", str(tmp_path / "approvals.sqlite3"))
+
+    pending = json.loads(main.run_tool("workspace_write", {"path": "x.txt", "content": "test"}))
+    assert pending["status"] == "pending_owner_approval"
+    assert not (tmp_path / "x.txt").exists()
