@@ -155,3 +155,13 @@ def test_workspace_write_is_approval_gated_by_default(tmp_path, monkeypatch):
     pending = json.loads(main.run_tool("workspace_write", {"path": "x.txt", "content": "test"}))
     assert pending["status"] == "pending_owner_approval"
     assert not (tmp_path / "x.txt").exists()
+
+
+def test_root_serves_chat_ui():
+    from fastapi.testclient import TestClient
+    from nova.main import app
+
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+    assert "NOVA" in response.text
+    assert 'id="chat-form"' in response.text
