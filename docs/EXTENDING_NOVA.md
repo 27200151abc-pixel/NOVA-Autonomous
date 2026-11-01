@@ -29,3 +29,12 @@ Set `NOVA_BASE_URL`, `NOVA_MODEL`, and optionally `NOVA_API_KEY` to any compatib
 ## Important boundary
 
 Owner-editable policy controls NOVA's own registered capabilities. It cannot change a model's license, a remote provider's terms, or the laws applying to the operator.
+## Python plugins
+
+Put a Python file in `nova/plugins/`. Define a `PLUGIN` manifest containing a unique `name`, `description`, and JSON Schema `parameters`, and a `run(arguments)` function. Add the plugin name to `enabled_plugins` in `nova/policy.json`. The sample `text_stats` plugin demonstrates the interface.
+
+**Important:** enabling a Python plugin executes its code in the NOVA server process with the server's OS permissions. Only enable code you wrote or reviewed. Isolate untrusted plugins in a restricted process/container. A plugin listed in `approval_required` is refused for now; the interactive approval workflow is not implemented yet.
+
+## Memory search
+
+NOVA stores messages in SQLite. The agent can use the built-in `memory_search` tool, or you can call `GET /v1/memory/search?q=...`. This is basic keyword matching, not semantic/vector retrieval yet.
