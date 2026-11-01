@@ -135,7 +135,7 @@ TOOL_REGISTRY = {
 
 
 def load_policy() -> dict[str, Any]:
-    defaults = {"enabled_tools": list(TOOL_REGISTRY), "enabled_plugins": [], "approval_required": [], "max_tool_calls_per_turn": 4}
+    defaults = {"enabled_tools": list(TOOL_REGISTRY), "enabled_plugins": [], "approval_required": [], "max_tool_calls_per_turn": 4, "max_tool_rounds": 5}
     try:
         with open(settings.nova_policy_path, "r", encoding="utf-8") as policy_file:
             configured = json.load(policy_file)
@@ -150,6 +150,7 @@ def load_policy() -> dict[str, Any]:
     defaults["enabled_plugins"] = [str(name) for name in defaults.get("enabled_plugins", [])]
     defaults["approval_required"] = [str(name) for name in defaults.get("approval_required", [])]
     defaults["max_tool_calls_per_turn"] = max(1, min(int(defaults.get("max_tool_calls_per_turn", 4)), 50))
+    defaults["max_tool_rounds"] = max(1, min(int(defaults.get("max_tool_rounds", 5)), 10))
     return defaults
 
 
@@ -209,7 +210,7 @@ async def ask_model(messages: list[dict[str, Any]]) -> str:
         headers["Authorization"] = f"Bearer {settings.nova_api_key}"
     try:
         async with httpx.AsyncClient(timeout=settings.nova_timeout_seconds) as client:
-            for _round in range(5):
+            for _round in range(load_policy()["max_tool_rounds"]):
                 payload = {"model": settings.nova_model, "messages": messages, "tools": active_tool_specs(), "tool_choice": "auto"}
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
