@@ -140,7 +140,7 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
         calls = message.get("tool_calls") or []
         if calls:
             # Preserve the provider's tool-call envelope so the follow-up request is valid.
-            messages.append({"role": "assistant", **message})
+            messages.append({"role": "assistant", **{**message, "tool_calls": calls[:4]}})
             for call in calls[:4]:
                 fn = call["function"]
                 try:
