@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     nova_chat_token: str = ""
     nova_workspace_root: str = "./workspace"
     nova_plugin_worker_url: str = "http://plugin-worker:8090"
+    nova_plugin_worker_token: str = ""
     nova_plugin_timeout_seconds: float = 8
 
 
@@ -295,10 +296,13 @@ def active_tool_specs() -> list[dict[str, Any]]:
 def execute_plugin(name: str, arguments: dict[str, Any]) -> str:
     if name not in load_plugins():
         raise PermissionError(f"Plugin disabled or not registered: {name}")
+    if not settings.nova_plugin_worker_token:
+        raise RuntimeError("Plugin worker authentication is not configured.")
     try:
         response = httpx.post(
             settings.nova_plugin_worker_url.rstrip("/") + "/run",
             json={"name": name, "arguments": arguments},
+            headers={"Authorization": "Bearer " + settings.nova_plugin_worker_token},
             timeout=max(1.0, min(float(settings.nova_plugin_timeout_seconds), 30.0)),
         )
         response.raise_for_status()
