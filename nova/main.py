@@ -159,7 +159,7 @@ def load_plugins() -> dict[str, Any]:
     plugin_dir = Path(settings.nova_plugins_dir)
     loaded: dict[str, Any] = {}
     for path in sorted(plugin_dir.glob("*.py")) if plugin_dir.exists() else []:
-        if path.name.startswith("_"):
+        if path.name.startswith("_") or path.stem not in policy["enabled_plugins"]:
             continue
         spec = importlib.util.spec_from_file_location(f"nova_owner_plugin_{path.stem}", path)
         if spec is None or spec.loader is None:
@@ -168,7 +168,7 @@ def load_plugins() -> dict[str, Any]:
         spec.loader.exec_module(module)
         manifest = getattr(module, "PLUGIN", {})
         name = manifest.get("name")
-        if name in policy["enabled_plugins"] and callable(getattr(module, "run", None)):
+        if name == path.stem and callable(getattr(module, "run", None)):
             loaded[name] = module
     return loaded
 
