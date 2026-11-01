@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -354,6 +355,11 @@ async def ask_model(messages: list[dict[str, Any]]) -> str:
         raise
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         raise HTTPException(status_code=502, detail=f"Model request failed: {type(exc).__name__}: {exc}") from exc
+
+@app.get("/", include_in_schema=False)
+def home() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
+
 
 @app.get("/health")
 def health() -> dict[str, Any]:
