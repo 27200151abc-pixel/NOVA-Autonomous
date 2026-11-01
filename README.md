@@ -53,3 +53,16 @@ Never commit `.env`, API keys, personal data, or database files. Do not expose t
 
 ## License
 NOVA-authored code is MIT licensed. See [LICENSE](LICENSE).
+
+## Owner authentication and approvals
+
+Set a long, private `NOVA_OWNER_TOKEN` in `.env`. Without this token, owner-only endpoints stay locked. Send it as `Authorization: Bearer <token>` when calling:
+
+- `GET /v1/owner-policy` — read the active policy.
+- `GET /v1/memory/search?q=...` — search stored messages.
+- `GET /v1/approvals?status=pending` — list pending tool requests.
+- `POST /v1/approvals/{id}/decision` with `{"decision":"approve"}` or `{"decision":"reject"}` — approve or reject a queued request.
+
+Tools listed in `approval_required` are queued instead of executed. Approval executes the tool once after rechecking that it remains enabled. Keep the token secret and do not expose the owner endpoints publicly without TLS and additional deployment protections.
+
+**Plugin safety:** Python plugins still execute inside the NOVA server process. Approval delays the plugin's `run()` call but is not a sandbox; enable only reviewed code. Process/container isolation remains future work.
