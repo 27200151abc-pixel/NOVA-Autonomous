@@ -7,11 +7,11 @@ NOVA separates its agent runtime from its tools and model provider.
 Edit `nova/policy.json` and restart NOVA (or make the change before the next request) to control registered tools:
 
 - `enabled_tools`: registered tools the model may request.
-- `approval_required`: tools that must not run until an owner-approval workflow is implemented and satisfied. In this scaffold they are safely refused.
+- `approval_required`: tools that are queued and will execute only after an authenticated owner approves them.
 - `max_tool_calls_per_turn`: owner-configurable cap per tool-call batch (1–50).
 - `max_tool_rounds`: owner-configurable multi-step tool-planning rounds (1–10).
 
-The active policy is readable at `GET /v1/owner-policy`. Unknown tool names are ignored until a corresponding implementation is registered in `TOOL_REGISTRY`.
+Owner endpoints require `Authorization: Bearer $NOVA_OWNER_TOKEN`. Set a long random `NOVA_OWNER_TOKEN`; without it, owner endpoints remain locked (HTTP 503). The active policy is readable at `GET /v1/owner-policy`. Unknown tool names are ignored until a corresponding implementation is registered in `TOOL_REGISTRY`.
 
 ## Add a tool
 
@@ -34,8 +34,17 @@ Owner-editable policy controls NOVA's own registered capabilities. It cannot cha
 
 Put a Python file in `nova/plugins/`. Define a `PLUGIN` manifest containing a unique `name`, `description`, and JSON Schema `parameters`, and a `run(arguments)` function. Add the plugin name to `enabled_plugins` in `nova/policy.json`. The sample `text_stats` plugin demonstrates the interface.
 
-**Important:** enabling a Python plugin executes its code in the NOVA server process with the server's OS permissions. Only enable code you wrote or reviewed. Isolate untrusted plugins in a restricted process/container. A plugin listed in `approval_required` is refused for now; the interactive approval workflow is not implemented yet.
+**Important:** enabling a Python plugin executes its code in the NOVA server process with the server's OS permissions. Only enable code you wrote or reviewed. Approval controls when `run()` is invoked; plugin import and tool-schema discovery still happen inside the server process. Isolate untrusted plugins in a restricted process/container before enabling them.
 
 ## Memory search
 
 NOVA stores messages in SQLite. The agent can use the built-in `memory_search` tool, or you can call `GET /v1/memory/search?q=...`. This is basic keyword matching, not semantic/vector retrieval yet.
+
+## Owner approval queue
+
+Add a tool name to `approval_required` in `nova/policy.json`. When NOVA requests that tool, it stores a pending request and does not execute it. Authenticated owner endpoints:
+
+- `GET /v1/approvals?status=pending` — list pending requests.
+- `POST /v1/approvals/{id}/decision` with `{"decision":"approve"}` or `{"decision":"reject"}` — approve and execute once, or reject.
+
+A request is atomically claimed before execution to prevent duplicate approvals. Approved execution re-checks that the tool is still enabled. Approval is not a sandbox: only approve actions and plugins you trust.
