@@ -284,6 +284,7 @@ def test_database_parent_is_created_and_history_limit_is_bounded(tmp_path, monke
     {"enabled_plugins": "text_stats"},
     {"approval_required": [1]},
     {"max_tool_calls_per_turn": "many"},
+    {"max_tool_rounds": True},
 ])
 def test_invalid_policy_types_fail_closed(tmp_path, monkeypatch, bad_policy):
     import json
