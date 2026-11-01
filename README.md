@@ -26,16 +26,14 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
+python scripts/setup_env.py
 ```
 
-Edit `.env` and set:
+The setup script creates three independent random secrets and refuses to overwrite an existing `.env`. Edit `.env` and set:
 - `NOVA_BASE_URL`: base URL of a compatible inference provider (without the `/chat/completions` suffix).
 - `NOVA_MODEL`: model identifier accepted by that provider.
 - `NOVA_API_KEY`: provider key, if required.
-- `NOVA_CHAT_TOKEN`: a long random secret for chat API access.
-- `NOVA_OWNER_TOKEN`: a different long random secret for policy, memory, and approvals.
-- `NOVA_PLUGIN_WORKER_TOKEN`: a third random secret shared only between the API and its plugin worker. Generate each independently with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+- `NOVA_CHAT_TOKEN`, `NOVA_OWNER_TOKEN`, and `NOVA_PLUGIN_WORKER_TOKEN` are generated automatically by the setup script. Keep them private and do not commit `.env`.
 
 Then start:
 
@@ -47,7 +45,7 @@ Open `http://127.0.0.1:8000/`. To review file-write approvals, open `http://127.
 
 ## Docker
 
-Copy `.env.example` to `.env`, configure the model, chat and owner tokens, and generate `NOVA_PLUGIN_WORKER_TOKEN` with the command above. Docker Compose refuses to start without the worker secret. The API container runs as non-root with a read-only root filesystem, and the host port is bound to `127.0.0.1` only by default. Then run:
+Run `python scripts/setup_env.py`, configure the model in `.env`, then start Docker Compose. The setup script creates the required chat, owner, and worker secrets. Docker Compose refuses to start without the worker secret. The API container runs as non-root with a read-only root filesystem, and the host port is bound to `127.0.0.1` only by default. Then run:
 
 ```bash
 docker compose up --build
