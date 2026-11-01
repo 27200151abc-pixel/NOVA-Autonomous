@@ -158,10 +158,17 @@ def test_workspace_write_is_approval_gated_by_default(tmp_path, monkeypatch):
 
 
 def test_root_serves_chat_ui():
-    from fastapi.testclient import TestClient
+    import asyncio
+    import httpx
     from nova.main import app
 
-    response = TestClient(app).get("/")
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.get("/")
+
+    response = asyncio.run(request())
     assert response.status_code == 200
     assert "NOVA" in response.text
     assert 'id="chat-form"' in response.text
@@ -186,10 +193,17 @@ def test_workspace_blocks_symbolic_links(tmp_path, monkeypatch):
 
 
 def test_owner_route_serves_console():
-    from fastapi.testclient import TestClient
+    import asyncio
+    import httpx
     from nova.main import app
 
-    response = TestClient(app).get("/owner")
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.get("/owner")
+
+    response = asyncio.run(request())
     assert response.status_code == 200
     assert "NOVA_OWNER_TOKEN" in response.text
     assert "approval" in response.text.lower()
