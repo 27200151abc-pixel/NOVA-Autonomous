@@ -4,6 +4,7 @@ import ast
 import json
 import operator
 import sqlite3
+import secrets
 import importlib.util
 from pathlib import Path
 import uuid
@@ -11,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +29,7 @@ class Settings(BaseSettings):
     nova_cors_origins: str = "http://localhost:5173"
     nova_policy_path: str = "./nova/policy.json"
     nova_plugins_dir: str = "./nova/plugins"
+    nova_owner_token: str = ""
 
 
 settings = Settings()
@@ -62,6 +64,12 @@ def db() -> sqlite3.Connection:
         created_at TEXT NOT NULL
     )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY, tool_name TEXT NOT NULL, arguments TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending','executing','approved','rejected','failed')),
+        result TEXT, created_at TEXT NOT NULL, decided_at TEXT
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status, created_at)")
     return conn
 
 
@@ -182,14 +190,12 @@ def active_tool_specs() -> list[dict[str, Any]]:
     return specs
 
 
-def run_tool(name: str, arguments: dict[str, Any]) -> str:
+def execute_tool(name: str, arguments: dict[str, Any]) -> str:
     policy = load_policy()
     plugins = load_plugins()
     available = set(policy["enabled_tools"]) | set(plugins)
     if name not in available:
         raise PermissionError(f"Tool disabled or not registered: {name}")
-    if name in policy["approval_required"]:
-        raise PermissionError(f"Owner approval required before running: {name}")
     if name == "calculator":
         return str(safe_calculate(str(arguments.get("expression", ""))))
     if name == "current_datetime":
@@ -199,6 +205,30 @@ def run_tool(name: str, arguments: dict[str, Any]) -> str:
     if name in plugins:
         return json.dumps(plugins[name].run(arguments), ensure_ascii=False, default=str)
     raise ValueError(f"Tool is not registered: {name}")
+
+
+def run_tool(name: str, arguments: dict[str, Any]) -> str:
+    policy = load_policy()
+    available = set(policy["enabled_tools"]) | set(load_plugins())
+    if name not in available:
+        raise PermissionError(f"Tool disabled or not registered: {name}")
+    if name in policy["approval_required"]:
+        approval_id = str(uuid.uuid4())
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO approvals(id, tool_name, arguments, status, created_at) VALUES(?,?,?,?,?)",
+                (approval_id, name, json.dumps(arguments, ensure_ascii=False), "pending", datetime.now(timezone.utc).isoformat()),
+            )
+        return json.dumps({"status": "pending_owner_approval", "approval_id": approval_id, "tool": name}, ensure_ascii=False)
+    return execute_tool(name, arguments)
+
+
+def require_owner(authorization: str | None = Header(default=None)) -> None:
+    if not settings.nova_owner_token:
+        raise HTTPException(status_code=503, detail="Owner endpoints are locked. Configure NOVA_OWNER_TOKEN.")
+    expected = "Bearer " + settings.nova_owner_token
+    if not authorization or not secrets.compare_digest(authorization, expected):
+        raise HTTPException(status_code=401, detail="Valid owner bearer token required.")
 
 
 async def ask_model(messages: list[dict[str, Any]]) -> str:
@@ -246,14 +276,56 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/v1/owner-policy")
-def owner_policy() -> dict[str, Any]:
+def owner_policy(_: None = Depends(require_owner)) -> dict[str, Any]:
     """Read the active owner-editable policy; editing the JSON file changes behavior."""
     return load_policy()
 
 
 @app.get("/v1/memory/search")
-def memory_search_endpoint(q: str, limit: int = 8) -> dict[str, Any]:
+def memory_search_endpoint(q: str, limit: int = 8, _: None = Depends(require_owner)) -> dict[str, Any]:
     return {"query": q, "results": search_memory(q, limit)}
+
+
+@app.get("/v1/approvals")
+def list_approvals(status: str = "pending", _: None = Depends(require_owner)) -> dict[str, Any]:
+    if status not in {"pending", "executing", "approved", "rejected", "failed", "all"}:
+        raise HTTPException(status_code=400, detail="Invalid approval status.")
+    with db() as conn:
+        if status == "all":
+            rows = conn.execute("SELECT id, tool_name, arguments, status, result, created_at, decided_at FROM approvals ORDER BY created_at DESC LIMIT 100").fetchall()
+        else:
+            rows = conn.execute("SELECT id, tool_name, arguments, status, result, created_at, decided_at FROM approvals WHERE status=? ORDER BY created_at DESC LIMIT 100", (status,)).fetchall()
+    keys = ("id", "tool_name", "arguments", "status", "result", "created_at", "decided_at")
+    return {"approvals": [dict(zip(keys, row)) for row in rows]}
+
+
+@app.post("/v1/approvals/{approval_id}/decision")
+def decide_approval(approval_id: str, decision: ApprovalDecision, _: None = Depends(require_owner)) -> dict[str, Any]:
+    with db() as conn:
+        row = conn.execute("SELECT tool_name, arguments, status FROM approvals WHERE id=?", (approval_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Approval request not found.")
+        tool_name, raw_arguments, status = row
+        if status != "pending":
+            raise HTTPException(status_code=409, detail=f"Approval is already {status}.")
+        if decision.decision == "reject":
+            conn.execute("UPDATE approvals SET status='rejected', result=?, decided_at=? WHERE id=? AND status='pending'",
+                         ("Rejected by owner.", datetime.now(timezone.utc).isoformat(), approval_id))
+            return {"id": approval_id, "status": "rejected"}
+        changed = conn.execute("UPDATE approvals SET status='executing', decided_at=? WHERE id=? AND status='pending'",
+                               (datetime.now(timezone.utc).isoformat(), approval_id)).rowcount
+        if changed != 1:
+            raise HTTPException(status_code=409, detail="Approval is already being processed.")
+    try:
+        result = execute_tool(tool_name, json.loads(raw_arguments))
+        final_status = "approved"
+    except Exception as exc:
+        result = f"Execution failed: {type(exc).__name__}: {exc}"
+        final_status = "failed"
+    with db() as conn:
+        conn.execute("UPDATE approvals SET status=?, result=? WHERE id=? AND status='executing'",
+                     (final_status, result, approval_id))
+    return {"id": approval_id, "status": final_status, "result": result}
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
