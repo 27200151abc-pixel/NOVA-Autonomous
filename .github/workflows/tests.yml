@@ -33,7 +33,7 @@ jobs:
             if curl --fail http://127.0.0.1:8000/health; then break; fi
             sleep 2
           done
-          docker compose exec -T nova python -c "import os,httpx; r=httpx.post('http://plugin-worker:8090/run',json={'name':'text_stats','arguments':{'text':'NOVA is ready'}},headers={'Authorization':'Bearer '+os.environ['NOVA_PLUGIN_WORKER_TOKEN']},timeout=5); r.raise_for_status(); assert r.json()['result']['words']==3"
+          docker compose exec -T nova python -c "import json,os; from nova import main; main.settings.nova_policy_path='/tmp/test-policy.json'; main.settings.nova_plugins_dir='/app/nova/plugins'; main.settings.nova_plugin_worker_token=os.environ['NOVA_PLUGIN_WORKER_TOKEN']; open('/tmp/test-policy.json','w').write(json.dumps({'enabled_tools':[],'enabled_plugins':['text_stats'],'approval_required':[]})); result=json.loads(main.run_tool('text_stats',{'text':'NOVA is ready'})); assert result=={'characters':14,'words':3,'lines':1}, result"
       - name: Stop the full stack
         if: always()
         run: docker compose down -v
