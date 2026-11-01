@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-app = FastAPI(title="NOVA API", version="0.3.0", description="Provider-neutral, self-hostable AI agent foundation")
+app = FastAPI(title="NOVA API", version="0.4.0", description="Provider-neutral, self-hostable AI agent foundation")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in settings.nova_cors_origins.split(",") if x.strip()],
@@ -155,6 +155,7 @@ def workspace_path(relative_path: str) -> Path:
         if str(relative_path) not in {"", "."}:
             raise ValueError("Workspace paths must be relative and cannot traverse parent directories.")
     root = Path(settings.nova_workspace_root).resolve()
+    root.mkdir(parents=True, exist_ok=True)
     candidate = (root / raw).resolve(strict=False)
     if candidate != root and root not in candidate.parents:
         raise ValueError("Path escapes the NOVA workspace.")
@@ -365,7 +366,7 @@ def home() -> FileResponse:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1")
-    return {"status": "ok", "service": "NOVA", "version": "0.3.0",
+    return {"status": "ok", "service": "NOVA", "version": "0.4.0",
             "model_configured": bool(settings.nova_base_url and settings.nova_model)}
 
 
