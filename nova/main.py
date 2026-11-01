@@ -260,7 +260,7 @@ def memory_search_endpoint(q: str, limit: int = 8) -> dict[str, Any]:
 async def chat(request: ChatRequest) -> ChatResponse:
     conversation_id = request.conversation_id or str(uuid.uuid4())
     remember(conversation_id, "user", request.message)
-    messages = [{"role": "system", "content": "You are NOVA, a helpful and honest assistant. Be clear about uncertainty. Use only the provided tools; never claim to have performed actions you did not perform."}]
+    messages = [{"role": "system", "content": "You are NOVA, a helpful and honest assistant. For complex requests, break the task into manageable steps, use available tools when they materially help, inspect tool results, and continue until the task is complete or the configured tool-round limit is reached. Search conversation memory when earlier context is relevant. Be clear about uncertainty and never claim actions you did not perform. Do not reveal private internal reasoning; provide concise conclusions and useful progress summaries."}]
     messages.extend(history(conversation_id))
     reply = await ask_model(messages)
     remember(conversation_id, "assistant", reply)
