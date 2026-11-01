@@ -21,6 +21,7 @@ jobs:
       - name: Validate Docker Compose configuration
         run: |
           cp .env.example .env
+          echo "NOVA_PLUGIN_WORKER_TOKEN=ci-test-token" >> .env
           docker compose config -q
       - name: Build isolated plugin worker image
         run: docker compose build plugin-worker
