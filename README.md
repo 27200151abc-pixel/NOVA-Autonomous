@@ -24,6 +24,8 @@ cp .env.example .env
 uvicorn nova.main:app --reload
 ```
 
+Chat UI: http://127.0.0.1:8000/  
+Owner approval console: http://127.0.0.1:8000/owner  
 OpenAPI docs: http://127.0.0.1:8000/docs
 
 ## API
