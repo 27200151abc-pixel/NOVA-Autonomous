@@ -10,6 +10,7 @@ services:
       - nova-data:/data
       - nova-workspace:/workspace
       - ./nova/plugins:/app/nova/plugins:ro
+      - ./nova/policy.json:/app/nova/policy.json:ro
     environment:
       NOVA_DATABASE_PATH: /data/nova.sqlite3
       NOVA_WORKSPACE_ROOT: /workspace
