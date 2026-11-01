@@ -4,6 +4,8 @@ import ast
 import json
 import operator
 import sqlite3
+import importlib.util
+from pathlib import Path
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -25,6 +27,7 @@ class Settings(BaseSettings):
     nova_max_history_messages: int = 20
     nova_cors_origins: str = "http://localhost:5173"
     nova_policy_path: str = "./nova/policy.json"
+    nova_plugins_dir: str = "./nova/plugins"
 
 
 settings = Settings()
@@ -117,7 +120,7 @@ TOOL_REGISTRY = {
 
 
 def load_policy() -> dict[str, Any]:
-    defaults = {"enabled_tools": list(TOOL_REGISTRY), "approval_required": [], "max_tool_calls_per_turn": 4}
+    defaults = {"enabled_tools": list(TOOL_REGISTRY), "enabled_plugins": [], "approval_required": [], "max_tool_calls_per_turn": 4}
     try:
         with open(settings.nova_policy_path, "r", encoding="utf-8") as policy_file:
             configured = json.load(policy_file)
@@ -129,26 +132,54 @@ def load_policy() -> dict[str, Any]:
     except (json.JSONDecodeError, OSError, ValueError) as exc:
         raise HTTPException(status_code=500, detail=f"Invalid NOVA policy file: {exc}") from exc
     defaults["enabled_tools"] = [name for name in defaults.get("enabled_tools", []) if name in TOOL_REGISTRY]
-    defaults["approval_required"] = [name for name in defaults.get("approval_required", []) if name in TOOL_REGISTRY]
+    defaults["enabled_plugins"] = [str(name) for name in defaults.get("enabled_plugins", [])]
+    defaults["approval_required"] = [str(name) for name in defaults.get("approval_required", [])]
     defaults["max_tool_calls_per_turn"] = max(1, min(int(defaults.get("max_tool_calls_per_turn", 4)), 50))
     return defaults
 
 
+def load_plugins() -> dict[str, Any]:
+    policy = load_policy()
+    plugin_dir = Path(settings.nova_plugins_dir)
+    loaded: dict[str, Any] = {}
+    for path in sorted(plugin_dir.glob("*.py")) if plugin_dir.exists() else []:
+        if path.name.startswith("_"):
+            continue
+        spec = importlib.util.spec_from_file_location(f"nova_owner_plugin_{path.stem}", path)
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        manifest = getattr(module, "PLUGIN", {})
+        name = manifest.get("name")
+        if name in policy["enabled_plugins"] and callable(getattr(module, "run", None)):
+            loaded[name] = module
+    return loaded
+
+
 def active_tool_specs() -> list[dict[str, Any]]:
     policy = load_policy()
-    return [TOOL_REGISTRY[name] for name in policy["enabled_tools"]]
+    specs = [TOOL_REGISTRY[name] for name in policy["enabled_tools"]]
+    for name, module in load_plugins().items():
+        manifest = module.PLUGIN
+        specs.append({"type": "function", "function": {"name": name, "description": manifest.get("description", name), "parameters": manifest.get("parameters", {"type": "object", "properties": {}, "additionalProperties": false})}})
+    return specs
 
 
 def run_tool(name: str, arguments: dict[str, Any]) -> str:
     policy = load_policy()
-    if name not in policy["enabled_tools"]:
-        raise PermissionError(f"Tool disabled by owner policy: {name}")
+    plugins = load_plugins()
+    available = set(policy["enabled_tools"]) | set(plugins)
+    if name not in available:
+        raise PermissionError(f"Tool disabled or not registered: {name}")
     if name in policy["approval_required"]:
         raise PermissionError(f"Owner approval required before running: {name}")
     if name == "calculator":
         return str(safe_calculate(str(arguments.get("expression", ""))))
     if name == "current_datetime":
         return datetime.now(timezone.utc).isoformat()
+    if name in plugins:
+        return json.dumps(plugins[name].run(arguments), ensure_ascii=False, default=str)
     raise ValueError(f"Tool is not registered: {name}")
 
 
