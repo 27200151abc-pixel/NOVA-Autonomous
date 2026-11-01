@@ -77,7 +77,7 @@ Python plugins in `nova/plugins/` run with the NOVA server process's OS permissi
 ```bash
 pip install -r requirements-dev.txt
 python -m compileall -q nova
-pytest -q
+python -m pytest -q
 ```
 
 GitHub Actions is configured to run compile checks and tests on pushes and pull requests to `main`. A successful run must be confirmed in the repository's Actions tab; the code changes alone do not prove the tests passed.
