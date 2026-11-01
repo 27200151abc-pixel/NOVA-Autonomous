@@ -32,7 +32,8 @@ Edit `.env` and set:
 - `NOVA_BASE_URL`: base URL of a compatible inference provider (without the `/chat/completions` suffix).
 - `NOVA_MODEL`: model identifier accepted by that provider.
 - `NOVA_API_KEY`: provider key, if required.
-- `NOVA_CHAT_TOKEN`: a long random secret for chat API access.\n- `NOVA_OWNER_TOKEN`: a separate long random secret for policy, memory, and approvals. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+- `NOVA_CHAT_TOKEN`: a long random secret for chat API access.
+- `NOVA_OWNER_TOKEN`: a different long random secret for policy, memory, and approvals. Generate each independently with `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
 
 Then start:
 
