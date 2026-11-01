@@ -1,0 +1,16 @@
+{
+  "name": "text_stats",
+  "description": "Count characters, words, and lines in a text string.",
+  "operation": "text_stats",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "Text to analyze (maximum 100000 characters)."
+      }
+    },
+    "required": ["text"],
+    "additionalProperties": false
+  }
+}
