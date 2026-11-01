@@ -200,44 +200,41 @@ def run_tool(name: str, arguments: dict[str, Any]) -> str:
     raise ValueError(f"Tool is not registered: {name}")
 
 
-async def ask_model(messages: list[dict[str, str]]) -> str:
+async def ask_model(messages: list[dict[str, Any]]) -> str:
     if not (settings.nova_base_url and settings.nova_model):
         raise HTTPException(status_code=503, detail="No model configured. Set NOVA_BASE_URL and NOVA_MODEL in .env.")
     url = settings.nova_base_url.rstrip("/") + "/chat/completions"
     headers = {"Content-Type": "application/json"}
     if settings.nova_api_key:
         headers["Authorization"] = f"Bearer {settings.nova_api_key}"
-    payload: dict[str, Any] = {"model": settings.nova_model, "messages": messages, "tools": active_tool_specs(), "tool_choice": "auto"}
     try:
         async with httpx.AsyncClient(timeout=settings.nova_timeout_seconds) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-        message = data["choices"][0]["message"]
-        calls = message.get("tool_calls") or []
-        if calls:
-            allowed_calls = calls[:load_policy()["max_tool_calls_per_turn"]]
-            # Preserve exactly the calls that NOVA will execute in the follow-up request.
-            messages.append({"role": "assistant", **{**message, "tool_calls": allowed_calls}})
-            for call in allowed_calls:
-                fn = call["function"]
-                try:
-                    result = run_tool(fn["name"], json.loads(fn.get("arguments") or "{}"))
-                except Exception as exc:
-                    result = f"Tool error: {exc}"
-                messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
-            async with httpx.AsyncClient(timeout=settings.nova_timeout_seconds) as client:
-                response = await client.post(url, headers=headers, json={
-                    "model": settings.nova_model, "messages": messages, "tools": active_tool_specs(), "tool_choice": "auto"
-                })
+            for _round in range(5):
+                payload = {"model": settings.nova_model, "messages": messages, "tools": active_tool_specs(), "tool_choice": "auto"}
+                response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
-        return str(data["choices"][0]["message"].get("content") or "The model returned an empty response.")
+                message = data["choices"][0]["message"]
+                calls = message.get("tool_calls") or []
+                if not calls:
+                    return str(message.get("content") or "The model returned an empty response.")
+                allowed_calls = calls[:load_policy()["max_tool_calls_per_turn"]]
+                messages.append({"role": "assistant", **{**message, "tool_calls": allowed_calls}})
+                for call in allowed_calls:
+                    fn = call["function"]
+                    try:
+                        arguments = json.loads(fn.get("arguments") or "{}")
+                        if not isinstance(arguments, dict):
+                            raise ValueError("Tool arguments must be a JSON object")
+                        result = run_tool(fn["name"], arguments)
+                    except Exception as exc:
+                        result = f"Tool error: {type(exc).__name__}: {exc}"
+                    messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
+        return "NOVA reached the maximum tool-planning rounds. Send a follow-up to continue."
     except HTTPException:
         raise
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         raise HTTPException(status_code=502, detail=f"Model request failed: {type(exc).__name__}: {exc}") from exc
-
 
 @app.get("/health")
 def health() -> dict[str, Any]:
