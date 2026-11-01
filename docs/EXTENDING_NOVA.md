@@ -53,3 +53,8 @@ A request is atomically claimed before execution to prevent duplicate approvals.
 ## Restricted workspace tools
 
 Set `NOVA_WORKSPACE_ROOT` to the dedicated directory NOVA may access. The built-in `workspace_list`, `workspace_read`, and `workspace_write` tools do not intentionally access paths outside this root; parent traversal and symbolic links are rejected. Text file reads/writes are capped at 128 KiB and listings at 200 entries. Keep the workspace separate from application secrets and the SQLite database. `workspace_write` is included in `approval_required` by default. This is path-level application isolation, not an OS security sandbox; do not expose the service to untrusted users without container/user-level isolation.
+
+
+## Phase 3 status
+
+The API serves a standalone responsive Arabic-first chat interface at `/`. The frontend uses the persistent conversation ID returned by `/v1/chat` and renders model text as text nodes (not HTML). This is a basic non-streaming chat UI; voice/video, browser automation, and operating-system-level plugin isolation are not implemented yet.
