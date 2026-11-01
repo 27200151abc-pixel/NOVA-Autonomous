@@ -81,6 +81,19 @@ def history(conversation_id: str) -> list[dict[str, str]]:
         ).fetchall()
     return [{"role": role, "content": content} for role, content in reversed(rows)]
 
+def search_memory(query: str, limit: int = 8) -> list[dict[str, str]]:
+    terms = [term.strip() for term in query.split() if term.strip()]
+    if not terms:
+        return []
+    limit = max(1, min(int(limit), 25))
+    where = " AND ".join(["content LIKE ?" for _ in terms])
+    with db() as conn:
+        rows = conn.execute(
+            f"SELECT conversation_id, role, content FROM messages WHERE {where} ORDER BY id DESC LIMIT ?",
+            [f"%{term}%" for term in terms] + [limit],
+        ).fetchall()
+    return [{"conversation_id": row[0], "role": row[1], "content": row[2]} for row in rows]
+
 
 # Deliberately restricted arithmetic evaluator: no names, calls, attributes, or code execution.
 _BINOPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
@@ -116,6 +129,8 @@ TOOL_REGISTRY = {
      "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"], "additionalProperties": False}}},
     "current_datetime": {"type": "function", "function": {"name": "current_datetime", "description": "Get the current UTC date and time.",
      "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}},
+    "memory_search": {"type": "function", "function": {"name": "memory_search", "description": "Search previous NOVA conversation messages.",
+     "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"], "additionalProperties": False}}},
 }
 
 
@@ -162,7 +177,7 @@ def active_tool_specs() -> list[dict[str, Any]]:
     specs = [TOOL_REGISTRY[name] for name in policy["enabled_tools"]]
     for name, module in load_plugins().items():
         manifest = module.PLUGIN
-        specs.append({"type": "function", "function": {"name": name, "description": manifest.get("description", name), "parameters": manifest.get("parameters", {"type": "object", "properties": {}, "additionalProperties": false})}})
+        specs.append({"type": "function", "function": {"name": name, "description": manifest.get("description", name), "parameters": manifest.get("parameters", {"type": "object", "properties": {}, "additionalProperties": False})}})
     return specs
 
 
@@ -178,6 +193,8 @@ def run_tool(name: str, arguments: dict[str, Any]) -> str:
         return str(safe_calculate(str(arguments.get("expression", ""))))
     if name == "current_datetime":
         return datetime.now(timezone.utc).isoformat()
+    if name == "memory_search":
+        return json.dumps(search_memory(str(arguments.get("query", "")), int(arguments.get("limit", 8))), ensure_ascii=False)
     if name in plugins:
         return json.dumps(plugins[name].run(arguments), ensure_ascii=False, default=str)
     raise ValueError(f"Tool is not registered: {name}")
@@ -234,6 +251,11 @@ def health() -> dict[str, Any]:
 def owner_policy() -> dict[str, Any]:
     """Read the active owner-editable policy; editing the JSON file changes behavior."""
     return load_policy()
+
+
+@app.get("/v1/memory/search")
+def memory_search_endpoint(q: str, limit: int = 8) -> dict[str, Any]:
+    return {"query": q, "results": search_memory(q, limit)}
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
