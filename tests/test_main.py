@@ -165,3 +165,21 @@ def test_root_serves_chat_ui():
     assert response.status_code == 200
     assert "NOVA" in response.text
     assert 'id="chat-form"' in response.text
+
+
+def test_workspace_blocks_symbolic_links(tmp_path, monkeypatch):
+    from nova import main
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    link = workspace / "shortcut.txt"
+    link.symlink_to(outside)
+    monkeypatch.setattr(main.settings, "nova_workspace_root", str(workspace))
+
+    with pytest.raises(ValueError):
+        main.workspace_read("shortcut.txt")
+    with pytest.raises(ValueError):
+        main.workspace_write("shortcut.txt", "overwrite")
+    assert outside.read_text(encoding="utf-8") == "secret"
