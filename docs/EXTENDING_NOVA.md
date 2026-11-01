@@ -48,3 +48,8 @@ Add a tool name to `approval_required` in `nova/policy.json`. When NOVA requests
 - `POST /v1/approvals/{id}/decision` with `{"decision":"approve"}` or `{"decision":"reject"}` — approve and execute once, or reject.
 
 A request is atomically claimed before execution to prevent duplicate approvals. Approved execution re-checks that the tool is still enabled. Approval is not a sandbox: only approve actions and plugins you trust.
+
+
+## Restricted workspace tools
+
+Set `NOVA_WORKSPACE_ROOT` to the dedicated directory NOVA may access. The built-in `workspace_list`, `workspace_read`, and `workspace_write` tools do not intentionally access paths outside this root; parent traversal and symbolic links are rejected. Text file reads/writes are capped at 128 KiB and listings at 200 entries. Keep the workspace separate from application secrets and the SQLite database. `workspace_write` is included in `approval_required` by default. This is path-level application isolation, not an OS security sandbox; do not expose the service to untrusted users without container/user-level isolation.
