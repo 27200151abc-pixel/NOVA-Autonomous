@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     nova_policy_path: str = "./nova/policy.json"
     nova_plugins_dir: str = "./nova/plugins"
     nova_owner_token: str = ""
+    nova_workspace_root: str = "./workspace"
 
 
 settings = Settings()
@@ -136,6 +137,66 @@ def safe_calculate(expression: str) -> float | int:
     return visit(node)
 
 
+def workspace_path(relative_path: str) -> Path:
+    raw = Path(relative_path)
+    if raw.is_absolute() or any(part in {"..", ""} for part in raw.parts):
+        if str(relative_path) not in {"", "."}:
+            raise ValueError("Workspace paths must be relative and cannot traverse parent directories.")
+    root = Path(settings.nova_workspace_root).resolve()
+    candidate = (root / raw).resolve(strict=False)
+    if candidate != root and root not in candidate.parents:
+        raise ValueError("Path escapes the NOVA workspace.")
+    current = root
+    for part in raw.parts:
+        if part in {"", "."}:
+            continue
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("Symbolic links are not allowed in the NOVA workspace.")
+    return candidate
+
+
+def workspace_list(relative_path: str = ".") -> dict[str, Any]:
+    directory = workspace_path(relative_path)
+    if not directory.exists() or not directory.is_dir():
+        raise ValueError("Workspace directory does not exist.")
+    entries = []
+    for item in sorted(directory.iterdir(), key=lambda p: p.name.lower())[:200]:
+        if item.is_symlink():
+            kind = "symlink_blocked"
+        elif item.is_dir():
+            kind = "directory"
+        elif item.is_file():
+            kind = "file"
+        else:
+            kind = "other"
+        entries.append({"name": item.name, "type": kind, "size": item.stat().st_size if kind == "file" else None})
+    return {"path": relative_path or ".", "entries": entries, "truncated": len(list(directory.iterdir())) > 200}
+
+
+def workspace_read(relative_path: str) -> dict[str, Any]:
+    target = workspace_path(relative_path)
+    if not target.exists() or not target.is_file() or target.is_symlink():
+        raise ValueError("Workspace file does not exist or is not a regular file.")
+    if target.stat().st_size > 131072:
+        raise ValueError("File exceeds the 128 KiB read limit.")
+    return {"path": relative_path, "content": target.read_text(encoding="utf-8")}
+
+
+def workspace_write(relative_path: str, content: str) -> dict[str, Any]:
+    target = workspace_path(relative_path)
+    if target == Path(settings.nova_workspace_root).resolve():
+        raise ValueError("A file path is required.")
+    if len(content.encode("utf-8")) > 131072:
+        raise ValueError("Content exceeds the 128 KiB write limit.")
+    if not target.parent.exists() or not target.parent.is_dir():
+        raise ValueError("Parent directory must already exist inside the workspace.")
+    if target.exists() and (not target.is_file() or target.is_symlink()):
+        raise ValueError("Target must be a regular file, not a directory or symbolic link.")
+    target.write_text(content, encoding="utf-8")
+    return {"path": relative_path, "bytes_written": len(content.encode("utf-8"))}
+
+
 TOOL_REGISTRY = {
     "calculator": {"type": "function", "function": {"name": "calculator", "description": "Evaluate a basic arithmetic expression safely.",
      "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"], "additionalProperties": False}}},
@@ -143,6 +204,12 @@ TOOL_REGISTRY = {
      "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}},
     "memory_search": {"type": "function", "function": {"name": "memory_search", "description": "Search previous NOVA conversation messages.",
      "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"], "additionalProperties": False}}},
+    "workspace_list": {"type": "function", "function": {"name": "workspace_list", "description": "List files and folders inside NOVA's restricted workspace.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "additionalProperties": False}}},
+    "workspace_read": {"type": "function", "function": {"name": "workspace_read", "description": "Read a UTF-8 text file inside NOVA's restricted workspace (128 KiB limit).",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"], "additionalProperties": False}}},
+    "workspace_write": {"type": "function", "function": {"name": "workspace_write", "description": "Write a UTF-8 text file inside NOVA's restricted workspace. This action always requires owner approval.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"], "additionalProperties": False}}},
 }
 
 
@@ -206,6 +273,12 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
         return datetime.now(timezone.utc).isoformat()
     if name == "memory_search":
         return json.dumps(search_memory(str(arguments.get("query", "")), int(arguments.get("limit", 8))), ensure_ascii=False)
+    if name == "workspace_list":
+        return json.dumps(workspace_list(str(arguments.get("path", "."))), ensure_ascii=False)
+    if name == "workspace_read":
+        return json.dumps(workspace_read(str(arguments.get("path", ""))), ensure_ascii=False)
+    if name == "workspace_write":
+        return json.dumps(workspace_write(str(arguments.get("path", "")), str(arguments.get("content", ""))), ensure_ascii=False)
     if name in plugins:
         return json.dumps(plugins[name].run(arguments), ensure_ascii=False, default=str)
     raise ValueError(f"Tool is not registered: {name}")
