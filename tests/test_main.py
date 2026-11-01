@@ -183,3 +183,13 @@ def test_workspace_blocks_symbolic_links(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         main.workspace_write("shortcut.txt", "overwrite")
     assert outside.read_text(encoding="utf-8") == "secret"
+
+
+def test_owner_route_serves_console():
+    from fastapi.testclient import TestClient
+    from nova.main import app
+
+    response = TestClient(app).get("/owner")
+    assert response.status_code == 200
+    assert "NOVA_OWNER_TOKEN" in response.text
+    assert "approval" in response.text.lower()
