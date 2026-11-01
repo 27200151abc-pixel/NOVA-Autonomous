@@ -75,6 +75,7 @@ def test_json_plugin_manifest_is_loaded_and_delegated_to_worker(tmp_path, monkey
     }), encoding="utf-8")
     monkeypatch.setattr(main.settings, "nova_policy_path", str(policy))
     monkeypatch.setattr(main.settings, "nova_plugins_dir", str(plugins))
+    monkeypatch.setattr(main.settings, "nova_plugin_worker_token", "worker-test-secret")
 
     class FakeResponse:
         def raise_for_status(self):
@@ -84,8 +85,8 @@ def test_json_plugin_manifest_is_loaded_and_delegated_to_worker(tmp_path, monkey
             return {"result": {"ok": True}}
 
     calls = []
-    def fake_post(url, json, timeout):
-        calls.append((url, json, timeout))
+    def fake_post(url, json, headers, timeout):
+        calls.append((url, json, headers, timeout))
         return FakeResponse()
 
     monkeypatch.setattr(main.httpx, "post", fake_post)
@@ -94,6 +95,7 @@ def test_json_plugin_manifest_is_loaded_and_delegated_to_worker(tmp_path, monkey
     assert calls == [(
         "http://plugin-worker:8090/run",
         {"name": "sample", "arguments": {}},
+        {"Authorization": "Bearer worker-test-secret"},
         main.settings.nova_plugin_timeout_seconds
     )]
 
