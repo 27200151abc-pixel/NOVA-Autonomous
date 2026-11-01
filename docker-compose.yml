@@ -14,7 +14,8 @@ services:
       NOVA_WORKSPACE_ROOT: /workspace
       NOVA_PLUGIN_WORKER_URL: http://plugin-worker:8090
     depends_on:
-      - plugin-worker
+      plugin-worker:
+        condition: service_healthy
     networks:
       - default
       - plugin-private
@@ -27,6 +28,11 @@ services:
       - ./nova/plugins:/plugins:ro
     expose:
       - "8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
