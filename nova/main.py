@@ -6,7 +6,7 @@ import operator
 import sqlite3
 import secrets
 from contextlib import contextmanager
-import importlib.util
+import httpx
 from pathlib import Path
 import uuid
 from datetime import datetime, timezone
@@ -34,10 +34,12 @@ class Settings(BaseSettings):
     nova_owner_token: str = ""
     nova_chat_token: str = ""
     nova_workspace_root: str = "./workspace"
+    nova_plugin_worker_url: str = "http://plugin-worker:8090"
+    nova_plugin_timeout_seconds: float = 8
 
 
 settings = Settings()
-app = FastAPI(title="NOVA API", version="0.4.2", description="Provider-neutral, self-hostable AI agent foundation")
+app = FastAPI(title="NOVA API", version="0.5.0", description="Provider-neutral, self-hostable AI agent foundation")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in settings.nova_cors_origins.split(",") if x.strip()],
@@ -259,32 +261,56 @@ def load_policy() -> dict[str, Any]:
     return defaults
 
 
-def load_plugins() -> dict[str, Any]:
+def load_plugins() -> dict[str, dict[str, Any]]:
+    """Read declarative JSON manifests only; never import plugin code in the API process."""
     policy = load_policy()
     plugin_dir = Path(settings.nova_plugins_dir)
-    loaded: dict[str, Any] = {}
-    for path in sorted(plugin_dir.glob("*.py")) if plugin_dir.exists() else []:
+    loaded: dict[str, dict[str, Any]] = {}
+    for path in sorted(plugin_dir.glob("*.json")) if plugin_dir.exists() else []:
         if path.name.startswith("_") or path.stem not in policy["enabled_plugins"]:
             continue
-        spec = importlib.util.spec_from_file_location(f"nova_owner_plugin_{path.stem}", path)
-        if spec is None or spec.loader is None:
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            name = manifest.get("name")
+            parameters = manifest.get("parameters")
+            if (
+                name != path.stem or not isinstance(manifest.get("description"), str)
+                or not isinstance(parameters, dict) or parameters.get("type") != "object"
+                or not isinstance(parameters.get("properties", {}), dict)
+            ):
+                continue
+            loaded[name] = manifest
+        except (OSError, json.JSONDecodeError, AttributeError):
             continue
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        manifest = getattr(module, "PLUGIN", {})
-        name = manifest.get("name")
-        if name == path.stem and callable(getattr(module, "run", None)):
-            loaded[name] = module
     return loaded
 
 
 def active_tool_specs() -> list[dict[str, Any]]:
     policy = load_policy()
     specs = [TOOL_REGISTRY[name] for name in policy["enabled_tools"]]
-    for name, module in load_plugins().items():
-        manifest = module.PLUGIN
-        specs.append({"type": "function", "function": {"name": name, "description": manifest.get("description", name), "parameters": manifest.get("parameters", {"type": "object", "properties": {}, "additionalProperties": False})}})
+    for name, manifest in load_plugins().items():
+        specs.append({"type": "function", "function": {"name": name, "description": manifest["description"], "parameters": manifest["parameters"]}})
     return specs
+
+
+def execute_plugin(name: str, arguments: dict[str, Any]) -> str:
+    if name not in load_plugins():
+        raise PermissionError(f"Plugin disabled or not registered: {name}")
+    try:
+        response = httpx.post(
+            settings.nova_plugin_worker_url.rstrip("/") + "/run",
+            json={"name": name, "arguments": arguments},
+            timeout=max(1.0, min(float(settings.nova_plugin_timeout_seconds), 30.0)),
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict) or "result" not in data:
+            raise RuntimeError("Plugin worker returned an invalid response.")
+        return json.dumps(data["result"], ensure_ascii=False, default=str)
+    except httpx.TimeoutException as exc:
+        raise RuntimeError("Plugin execution timed out in the isolated worker.") from exc
+    except httpx.HTTPError as exc:
+        raise RuntimeError("Isolated plugin worker is unavailable or failed.") from exc
 
 
 def execute_tool(name: str, arguments: dict[str, Any]) -> str:
@@ -306,7 +332,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
     if name == "workspace_write":
         return json.dumps(workspace_write(str(arguments.get("path", "")), str(arguments.get("content", ""))), ensure_ascii=False)
     if name in plugins:
-        return json.dumps(plugins[name].run(arguments), ensure_ascii=False, default=str)
+        return execute_plugin(name, arguments)
     raise ValueError(f"Tool is not registered: {name}")
 
 
@@ -398,7 +424,7 @@ def owner_console() -> FileResponse:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1")
-    return {"status": "ok", "service": "NOVA", "version": "0.4.2",
+    return {"status": "ok", "service": "NOVA", "version": "0.5.0",
             "model_configured": bool(settings.nova_base_url and settings.nova_model)}
 
 
