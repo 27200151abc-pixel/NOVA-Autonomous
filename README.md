@@ -2,7 +2,7 @@
 
 NOVA is a provider-neutral AI-agent foundation designed to run on a machine or host controlled by its owner. The project is open-source; external models and hosting retain their own licenses, terms, costs, and quotas.
 
-> **Current state: Phase 3 foundation (v0.4.0).** Includes an Arabic-first web chat, SQLite conversation history and keyword search, bounded multi-step tool calling, owner authentication, an approval queue and console, Python plugins, and restricted workspace file tools. It is not yet a finished autonomous assistant: live voice/video, browser automation, robust plugin sandboxing, and verified production deployment remain future work.
+> **Current state: Phase 3 foundation (v0.4.1).** Includes an Arabic-first web chat, SQLite conversation history and keyword search, bounded multi-step tool calling, owner authentication, an approval queue and console, Python plugins, and restricted workspace file tools. It is not yet a finished autonomous assistant: live voice/video, browser automation, robust plugin sandboxing, and verified production deployment remain future work.
 
 ## Features
 
@@ -10,7 +10,7 @@ NOVA is a provider-neutral AI-agent foundation designed to run on a machine or h
 - Browser chat at `/`; owner console at `/owner`; API docs at `/docs`.
 - SQLite conversation persistence and basic keyword memory search.
 - Owner-editable policy in `nova/policy.json`.
-- Multi-round tool calling with configurable limits.
+- Multi-round tool calling with a strict aggregate tool-call budget per user turn.
 - Approval queue for sensitive tools; workspace writes require approval by default.
 - Workspace list/read/write tools restricted to `NOVA_WORKSPACE_ROOT`.
 - Owner-only endpoints protected by a bearer token.
@@ -84,7 +84,7 @@ GitHub Actions is configured to run compile checks and tests on pushes and pull 
 
 ## Roadmap
 
-1. Verify and harden the current runtime and approval workflow.
+1. Continue runtime hardening, database reliability, and approval-workflow verification.
 2. Add OS-level isolation for plugins and tool execution.
 3. Add controlled browser automation with explicit approval for external side effects.
 4. Improve memory retrieval and add import/export.
