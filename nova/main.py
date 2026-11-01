@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-app = FastAPI(title="NOVA API", version="0.1.0", description="Provider-neutral, self-hostable AI agent foundation")
+app = FastAPI(title="NOVA API", version="0.3.0", description="Provider-neutral, self-hostable AI agent foundation")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in settings.nova_cors_origins.split(",") if x.strip()],
@@ -241,7 +241,7 @@ async def ask_model(messages: list[dict[str, Any]]) -> str:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1")
-    return {"status": "ok", "service": "NOVA", "version": "0.2.0",
+    return {"status": "ok", "service": "NOVA", "version": "0.3.0",
             "model_configured": bool(settings.nova_base_url and settings.nova_model)}
 
 
