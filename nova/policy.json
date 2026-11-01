@@ -4,5 +4,8 @@
     "current_datetime"
   ],
   "approval_required": [],
-  "max_tool_calls_per_turn": 4
+  "max_tool_calls_per_turn": 4,
+  "enabled_plugins": [
+    "text_stats"
+  ]
 }
