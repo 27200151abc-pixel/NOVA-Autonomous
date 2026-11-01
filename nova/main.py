@@ -245,14 +245,15 @@ def load_policy() -> dict[str, Any]:
         value = defaults.get(key, [])
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
             raise HTTPException(status_code=500, detail=f"Invalid NOVA policy: {key} must be a list of strings.")
-    try:
-        max_tool_calls = int(defaults.get("max_tool_calls_per_turn", 4))
-        max_tool_rounds = int(defaults.get("max_tool_rounds", 5))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=500, detail="Invalid NOVA policy: tool limits must be integers.") from exc
-    defaults["enabled_tools"] = [name for name in defaults["enabled_tools"] if name in TOOL_REGISTRY]
-    defaults["enabled_plugins"] = [name for name in defaults["enabled_plugins"] if name.isidentifier()]
-    defaults["approval_required"] = defaults["approval_required"]
+    max_tool_calls = defaults.get("max_tool_calls_per_turn", 4)
+    max_tool_rounds = defaults.get("max_tool_rounds", 5)
+    if type(max_tool_calls) is not int or type(max_tool_rounds) is not int:
+        raise HTTPException(status_code=500, detail="Invalid NOVA policy: tool limits must be integers.")
+    defaults["enabled_tools"] = list(dict.fromkeys(name for name in defaults["enabled_tools"] if name in TOOL_REGISTRY))
+    defaults["enabled_plugins"] = list(dict.fromkeys(
+        name for name in defaults["enabled_plugins"] if name.isidentifier() and name not in TOOL_REGISTRY
+    ))
+    defaults["approval_required"] = list(dict.fromkeys(defaults["approval_required"]))
     defaults["max_tool_calls_per_turn"] = max(1, min(max_tool_calls, 50))
     defaults["max_tool_rounds"] = max(1, min(max_tool_rounds, 10))
     return defaults
