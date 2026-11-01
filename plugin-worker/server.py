@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 PLUGIN_DIR = Path("/plugins")
@@ -62,4 +62,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8090), Handler).serve_forever()
+    HTTPServer(("0.0.0.0", 8090), Handler).serve_forever()
