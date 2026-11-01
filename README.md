@@ -54,6 +54,10 @@ Never commit `.env`, API keys, personal data, or database files. Do not expose t
 ## License
 NOVA-authored code is MIT licensed. See [LICENSE](LICENSE).
 
+## Workspace file tools
+
+NOVA can list and read UTF-8 text files, and write files, inside `NOVA_WORKSPACE_ROOT` only. Reads and writes are limited to 128 KiB; directory listings are capped at 200 entries. Parent-directory traversal and symbolic links are rejected. `workspace_write` is approval-gated by default. The workspace is mounted separately in Docker Compose at `/workspace`.
+
 ## Owner authentication and approvals
 
 Set a long, private `NOVA_OWNER_TOKEN` in `.env`. Without this token, owner-only endpoints stay locked. Send it as `Authorization: Bearer <token>` when calling:
