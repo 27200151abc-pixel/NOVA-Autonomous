@@ -1,7 +1,8 @@
 {
   "enabled_tools": [
     "calculator",
-    "current_datetime"
+    "current_datetime",
+    "memory_search"
   ],
   "approval_required": [],
   "max_tool_calls_per_turn": 4,
