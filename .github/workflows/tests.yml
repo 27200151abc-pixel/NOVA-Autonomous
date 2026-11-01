@@ -23,5 +23,17 @@ jobs:
           cp .env.example .env
           echo "NOVA_PLUGIN_WORKER_TOKEN=ci-test-token" >> .env
           docker compose config -q
-      - name: Build isolated plugin worker image
-        run: docker compose build plugin-worker
+      - name: Build NOVA and isolated worker images
+        run: docker compose build
+      - name: Start the full stack
+        run: docker compose up -d
+      - name: Verify API health and authenticated plugin execution
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail http://127.0.0.1:8000/health; then break; fi
+            sleep 2
+          done
+          docker compose exec -T nova python -c "import os,httpx; r=httpx.post('http://plugin-worker:8090/run',json={'name':'text_stats','arguments':{'text':'NOVA is ready'}},headers={'Authorization':'Bearer '+os.environ['NOVA_PLUGIN_WORKER_TOKEN']},timeout=5); r.raise_for_status(); assert r.json()['result']['words']==3"
+      - name: Stop the full stack
+        if: always()
+        run: docker compose down -v
