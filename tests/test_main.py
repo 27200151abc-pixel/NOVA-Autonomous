@@ -264,3 +264,16 @@ def test_tool_call_budget_is_total_across_rounds(monkeypatch):
     reply = asyncio.run(main.ask_model([{"role": "user", "content": "calculate"}]))
     assert len(executed) == 2
     assert reply == "NOVA reached the maximum tool-call budget for this turn. Send a follow-up to continue."
+
+
+def test_database_parent_is_created_and_history_limit_is_bounded(tmp_path, monkeypatch):
+    from nova import main
+
+    database = tmp_path / "missing" / "nested" / "nova.sqlite3"
+    monkeypatch.setattr(main.settings, "nova_database_path", str(database))
+    monkeypatch.setattr(main.settings, "nova_max_history_messages", 0)
+    main.remember("conversation-b", "user", "first")
+    main.remember("conversation-b", "assistant", "second")
+
+    assert database.exists()
+    assert main.history("conversation-b") == [{"role": "assistant", "content": "second"}]
