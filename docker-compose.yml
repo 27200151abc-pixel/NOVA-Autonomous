@@ -8,11 +8,43 @@ services:
     volumes:
       - nova-data:/data
       - nova-workspace:/workspace
+      - ./nova/plugins:/app/nova/plugins:ro
     environment:
       NOVA_DATABASE_PATH: /data/nova.sqlite3
       NOVA_WORKSPACE_ROOT: /workspace
+      NOVA_PLUGIN_WORKER_URL: http://plugin-worker:8090
+    depends_on:
+      - plugin-worker
+    networks:
+      - default
+      - plugin-private
+    restart: unless-stopped
+
+  plugin-worker:
+    build:
+      context: ./plugin-worker
+    volumes:
+      - ./nova/plugins:/plugins:ro
+    expose:
+      - "8090"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 128m
+    cpus: 0.50
+    networks:
+      - plugin-private
     restart: unless-stopped
 
 volumes:
   nova-data:
   nova-workspace:
+
+networks:
+  plugin-private:
+    internal: true
