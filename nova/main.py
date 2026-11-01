@@ -168,9 +168,10 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
         message = data["choices"][0]["message"]
         calls = message.get("tool_calls") or []
         if calls:
-            # Preserve the provider's tool-call envelope so the follow-up request is valid.
-            messages.append({"role": "assistant", **{**message, "tool_calls": calls[:4]}})
-            for call in calls[:load_policy()["max_tool_calls_per_turn"]]:
+            allowed_calls = calls[:load_policy()["max_tool_calls_per_turn"]]
+            # Preserve exactly the calls that NOVA will execute in the follow-up request.
+            messages.append({"role": "assistant", **{**message, "tool_calls": allowed_calls}})
+            for call in allowed_calls:
                 fn = call["function"]
                 try:
                     result = run_tool(fn["name"], json.loads(fn.get("arguments") or "{}"))
