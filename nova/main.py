@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-app = FastAPI(title="NOVA API", version="0.4.1", description="Provider-neutral, self-hostable AI agent foundation")
+app = FastAPI(title="NOVA API", version="0.4.2", description="Provider-neutral, self-hostable AI agent foundation")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in settings.nova_cors_origins.split(",") if x.strip()],
@@ -241,11 +241,20 @@ def load_policy() -> dict[str, Any]:
         pass
     except (json.JSONDecodeError, OSError, ValueError) as exc:
         raise HTTPException(status_code=500, detail=f"Invalid NOVA policy file: {exc}") from exc
-    defaults["enabled_tools"] = [name for name in defaults.get("enabled_tools", []) if name in TOOL_REGISTRY]
-    defaults["enabled_plugins"] = [str(name) for name in defaults.get("enabled_plugins", [])]
-    defaults["approval_required"] = [str(name) for name in defaults.get("approval_required", [])]
-    defaults["max_tool_calls_per_turn"] = max(1, min(int(defaults.get("max_tool_calls_per_turn", 4)), 50))
-    defaults["max_tool_rounds"] = max(1, min(int(defaults.get("max_tool_rounds", 5)), 10))
+    for key in ("enabled_tools", "enabled_plugins", "approval_required"):
+        value = defaults.get(key, [])
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise HTTPException(status_code=500, detail=f"Invalid NOVA policy: {key} must be a list of strings.")
+    try:
+        max_tool_calls = int(defaults.get("max_tool_calls_per_turn", 4))
+        max_tool_rounds = int(defaults.get("max_tool_rounds", 5))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="Invalid NOVA policy: tool limits must be integers.") from exc
+    defaults["enabled_tools"] = [name for name in defaults["enabled_tools"] if name in TOOL_REGISTRY]
+    defaults["enabled_plugins"] = [name for name in defaults["enabled_plugins"] if name.isidentifier()]
+    defaults["approval_required"] = defaults["approval_required"]
+    defaults["max_tool_calls_per_turn"] = max(1, min(max_tool_calls, 50))
+    defaults["max_tool_rounds"] = max(1, min(max_tool_rounds, 10))
     return defaults
 
 
@@ -388,7 +397,7 @@ def owner_console() -> FileResponse:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1")
-    return {"status": "ok", "service": "NOVA", "version": "0.4.1",
+    return {"status": "ok", "service": "NOVA", "version": "0.4.2",
             "model_configured": bool(settings.nova_base_url and settings.nova_model)}
 
 
