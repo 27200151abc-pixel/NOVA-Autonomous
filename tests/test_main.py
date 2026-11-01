@@ -277,3 +277,23 @@ def test_database_parent_is_created_and_history_limit_is_bounded(tmp_path, monke
 
     assert database.exists()
     assert main.history("conversation-b") == [{"role": "assistant", "content": "second"}]
+
+
+@pytest.mark.parametrize("bad_policy", [
+    {"enabled_tools": None},
+    {"enabled_plugins": "text_stats"},
+    {"approval_required": [1]},
+    {"max_tool_calls_per_turn": "many"},
+])
+def test_invalid_policy_types_fail_closed(tmp_path, monkeypatch, bad_policy):
+    import json
+    from fastapi import HTTPException
+    from nova import main
+
+    policy_file = tmp_path / "policy.json"
+    policy_file.write_text(json.dumps(bad_policy), encoding="utf-8")
+    monkeypatch.setattr(main.settings, "nova_policy_path", str(policy_file))
+
+    with pytest.raises(HTTPException) as error:
+        main.load_policy()
+    assert error.value.status_code == 500
