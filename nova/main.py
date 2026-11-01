@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     nova_policy_path: str = "./nova/policy.json"
     nova_plugins_dir: str = "./nova/plugins"
     nova_owner_token: str = ""
+    nova_chat_token: str = ""
     nova_workspace_root: str = "./workspace"
 
 
@@ -313,6 +314,14 @@ def run_tool(name: str, arguments: dict[str, Any]) -> str:
     return execute_tool(name, arguments)
 
 
+def require_chat(authorization: str | None = Header(default=None)) -> None:
+    if not settings.nova_chat_token:
+        raise HTTPException(status_code=503, detail="Chat access is locked. Configure NOVA_CHAT_TOKEN.")
+    expected = "Bearer " + settings.nova_chat_token
+    if not authorization or not secrets.compare_digest(authorization, expected):
+        raise HTTPException(status_code=401, detail="Valid chat bearer token required.")
+
+
 def require_owner(authorization: str | None = Header(default=None)) -> None:
     if not settings.nova_owner_token:
         raise HTTPException(status_code=503, detail="Owner endpoints are locked. Configure NOVA_OWNER_TOKEN.")
@@ -429,7 +438,7 @@ def decide_approval(approval_id: str, decision: ApprovalDecision, _: None = Depe
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(request: ChatRequest, _: None = Depends(require_chat)) -> ChatResponse:
     conversation_id = request.conversation_id or str(uuid.uuid4())
     remember(conversation_id, "user", request.message)
     messages = [{"role": "system", "content": "You are NOVA, a helpful and honest assistant. For complex requests, break the task into manageable steps, use available tools when they materially help, inspect tool results, and continue until the task is complete or the configured tool-round limit is reached. Search conversation memory when earlier context is relevant. Be clear about uncertainty and never claim actions you did not perform. Do not reveal private internal reasoning; provide concise conclusions and useful progress summaries."}]
