@@ -2,9 +2,14 @@
   "enabled_tools": [
     "calculator",
     "current_datetime",
-    "memory_search"
+    "memory_search",
+    "workspace_list",
+    "workspace_read",
+    "workspace_write"
   ],
-  "approval_required": [],
+  "approval_required": [
+    "workspace_write"
+  ],
   "max_tool_calls_per_turn": 4,
   "enabled_plugins": [
     "text_stats"
