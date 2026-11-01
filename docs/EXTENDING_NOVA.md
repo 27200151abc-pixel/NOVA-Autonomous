@@ -8,7 +8,8 @@ Edit `nova/policy.json` and restart NOVA (or make the change before the next req
 
 - `enabled_tools`: registered tools the model may request.
 - `approval_required`: tools that must not run until an owner-approval workflow is implemented and satisfied. In this scaffold they are safely refused.
-- `max_tool_calls_per_turn`: owner-configurable cap for one model turn (1–50).
+- `max_tool_calls_per_turn`: owner-configurable cap per tool-call batch (1–50).
+- `max_tool_rounds`: owner-configurable multi-step tool-planning rounds (1–10).
 
 The active policy is readable at `GET /v1/owner-policy`. Unknown tool names are ignored until a corresponding implementation is registered in `TOOL_REGISTRY`.
 
