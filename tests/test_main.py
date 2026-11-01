@@ -74,3 +74,45 @@ def test_enabled_plugin_is_loaded_and_executable(tmp_path, monkeypatch):
     monkeypatch.setattr(main.settings, "nova_plugins_dir", str(plugins))
     assert "sample" in main.load_plugins()
     assert main.run_tool("sample", {}) == '{"ok": true}'
+
+
+def test_owner_endpoints_require_token(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from nova import main
+
+    monkeypatch.setattr(main.settings, "nova_owner_token", "test-secret")
+    with pytest.raises(HTTPException) as error:
+        main.require_owner("Bearer wrong")
+    assert error.value.status_code == 401
+    assert main.require_owner("Bearer test-secret") is None
+
+
+def test_approval_queue_executes_only_after_owner_approval(tmp_path, monkeypatch):
+    import json
+    import sqlite3
+    from nova import main
+
+    policy_file = tmp_path / "policy.json"
+    policy_file.write_text(json.dumps({
+        "enabled_tools": ["calculator"],
+        "enabled_plugins": [],
+        "approval_required": ["calculator"],
+        "max_tool_calls_per_turn": 2,
+        "max_tool_rounds": 2
+    }), encoding="utf-8")
+    monkeypatch.setattr(main.settings, "nova_policy_path", str(policy_file))
+    monkeypatch.setattr(main.settings, "nova_plugins_dir", str(tmp_path / "no-plugins"))
+    monkeypatch.setattr(main.settings, "nova_database_path", str(tmp_path / "approvals.sqlite3"))
+
+    pending = json.loads(main.run_tool("calculator", {"expression": "6 * 7"}))
+    assert pending["status"] == "pending_owner_approval"
+    with sqlite3.connect(main.settings.nova_database_path) as conn:
+        row = conn.execute("SELECT status FROM approvals WHERE id=?", (pending["approval_id"],)).fetchone()
+    assert row[0] == "pending"
+
+    result = main.decide_approval(pending["approval_id"], main.ApprovalDecision(decision="approve"))
+    assert result["status"] == "approved"
+    assert result["result"] == "42"
+    with sqlite3.connect(main.settings.nova_database_path) as conn:
+        row = conn.execute("SELECT status FROM approvals WHERE id=?", (pending["approval_id"],)).fetchone()
+    assert row[0] == "approved"
