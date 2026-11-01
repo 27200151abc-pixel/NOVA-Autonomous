@@ -6,7 +6,6 @@ import operator
 import sqlite3
 import secrets
 from contextlib import contextmanager
-import httpx
 from pathlib import Path
 import uuid
 from datetime import datetime, timezone
