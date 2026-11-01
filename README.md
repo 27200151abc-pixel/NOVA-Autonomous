@@ -2,7 +2,7 @@
 
 NOVA is a provider-neutral AI-agent foundation designed to run on a machine or host controlled by its owner. The project is open-source; external models and hosting retain their own licenses, terms, costs, and quotas.
 
-> **Current state: Phase 3 foundation (v0.5.0 in progress).** Includes an Arabic-first web chat, SQLite conversation history and keyword search, bounded multi-step tool calling, owner authentication, an approval queue and console, Python plugins, and restricted workspace file tools. It is not yet a finished autonomous assistant: live voice/video, browser automation, isolated plugin execution and verified production deployment remain in progress.
+> **Current state: Phase 3 foundation (v0.5.0 in progress).** Includes an Arabic-first web chat, SQLite conversation history and keyword search, bounded multi-step tool calling, owner authentication, an approval queue and console, and restricted workspace file tools. Python plugin execution is temporarily disabled pending a verified isolated worker. It is not yet a finished autonomous assistant: live voice/video, browser automation, isolated plugin execution and verified production deployment remain in progress.
 
 ## Features
 
@@ -12,6 +12,7 @@ NOVA is a provider-neutral AI-agent foundation designed to run on a machine or h
 - Owner-editable policy in `nova/policy.json`, with fail-closed type validation for tool lists and execution limits.
 - Multi-round tool calling with a strict aggregate tool-call budget per user turn.
 - Approval queue for sensitive tools; workspace writes require approval by default.
+- Python plugins are temporarily disabled until a separately constrained worker is implemented and tested.
 - Workspace list/read/write tools restricted to `NOVA_WORKSPACE_ROOT`.
 - Owner-only endpoints protected by a bearer token.
 - Docker Compose volumes separate persistent database and workspace data.
@@ -70,7 +71,7 @@ This is application-level path restriction, not an operating-system sandbox. Kee
 
 ## Plugins
 
-Python plugins in `nova/plugins/` run with the NOVA server process's OS permissions. Enable only code you wrote or reviewed. Approval delays a plugin's `run()` invocation but does not sandbox its import or execution. Strong process/container isolation is not implemented yet.
+Python plugin execution is currently disabled in `nova/policy.json` (`enabled_plugins` is empty). Do not enable plugins until isolated execution is implemented and verified. Approval gating alone is not a sandbox.
 
 ## Development and tests
 
