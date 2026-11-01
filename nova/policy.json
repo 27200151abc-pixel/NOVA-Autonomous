@@ -8,5 +8,6 @@
   "max_tool_calls_per_turn": 4,
   "enabled_plugins": [
     "text_stats"
-  ]
+  ],
+  "max_tool_rounds": 5
 }
