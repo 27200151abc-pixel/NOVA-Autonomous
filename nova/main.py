@@ -54,6 +54,10 @@ class ChatResponse(BaseModel):
     model: str
 
 
+class ApprovalDecision(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
+
+
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(settings.nova_database_path)
     conn.execute("""CREATE TABLE IF NOT EXISTS messages (
