@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     nova_database_path: str = "./nova_memory.sqlite3"
     nova_max_history_messages: int = 20
     nova_cors_origins: str = "http://localhost:5173"
+    nova_policy_path: str = "./nova/policy.json"
 
 
 settings = Settings()
@@ -107,20 +108,48 @@ def safe_calculate(expression: str) -> float | int:
     return visit(node)
 
 
-TOOLS = [
-    {"type": "function", "function": {"name": "calculator", "description": "Evaluate a basic arithmetic expression safely.",
+TOOL_REGISTRY = {
+    "calculator": {"type": "function", "function": {"name": "calculator", "description": "Evaluate a basic arithmetic expression safely.",
      "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"], "additionalProperties": False}}},
-    {"type": "function", "function": {"name": "current_datetime", "description": "Get the current UTC date and time.",
+    "current_datetime": {"type": "function", "function": {"name": "current_datetime", "description": "Get the current UTC date and time.",
      "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}},
-]
+}
+
+
+def load_policy() -> dict[str, Any]:
+    defaults = {"enabled_tools": list(TOOL_REGISTRY), "approval_required": [], "max_tool_calls_per_turn": 4}
+    try:
+        with open(settings.nova_policy_path, "r", encoding="utf-8") as policy_file:
+            configured = json.load(policy_file)
+        if not isinstance(configured, dict):
+            raise ValueError("Policy root must be a JSON object")
+        defaults.update(configured)
+    except FileNotFoundError:
+        pass
+    except (json.JSONDecodeError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=f"Invalid NOVA policy file: {exc}") from exc
+    defaults["enabled_tools"] = [name for name in defaults.get("enabled_tools", []) if name in TOOL_REGISTRY]
+    defaults["approval_required"] = [name for name in defaults.get("approval_required", []) if name in TOOL_REGISTRY]
+    defaults["max_tool_calls_per_turn"] = max(1, min(int(defaults.get("max_tool_calls_per_turn", 4)), 50))
+    return defaults
+
+
+def active_tool_specs() -> list[dict[str, Any]]:
+    policy = load_policy()
+    return [TOOL_REGISTRY[name] for name in policy["enabled_tools"]]
 
 
 def run_tool(name: str, arguments: dict[str, Any]) -> str:
+    policy = load_policy()
+    if name not in policy["enabled_tools"]:
+        raise PermissionError(f"Tool disabled by owner policy: {name}")
+    if name in policy["approval_required"]:
+        raise PermissionError(f"Owner approval required before running: {name}")
     if name == "calculator":
         return str(safe_calculate(str(arguments.get("expression", ""))))
     if name == "current_datetime":
         return datetime.now(timezone.utc).isoformat()
-    raise ValueError(f"Tool not allowed: {name}")
+    raise ValueError(f"Tool is not registered: {name}")
 
 
 async def ask_model(messages: list[dict[str, str]]) -> str:
@@ -130,7 +159,7 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
     headers = {"Content-Type": "application/json"}
     if settings.nova_api_key:
         headers["Authorization"] = f"Bearer {settings.nova_api_key}"
-    payload: dict[str, Any] = {"model": settings.nova_model, "messages": messages, "tools": TOOLS, "tool_choice": "auto"}
+    payload: dict[str, Any] = {"model": settings.nova_model, "messages": messages, "tools": active_tool_specs(), "tool_choice": "auto"}
     try:
         async with httpx.AsyncClient(timeout=settings.nova_timeout_seconds) as client:
             response = await client.post(url, headers=headers, json=payload)
@@ -141,7 +170,7 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
         if calls:
             # Preserve the provider's tool-call envelope so the follow-up request is valid.
             messages.append({"role": "assistant", **{**message, "tool_calls": calls[:4]}})
-            for call in calls[:4]:
+            for call in calls[:load_policy()["max_tool_calls_per_turn"]]:
                 fn = call["function"]
                 try:
                     result = run_tool(fn["name"], json.loads(fn.get("arguments") or "{}"))
@@ -150,7 +179,7 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
             async with httpx.AsyncClient(timeout=settings.nova_timeout_seconds) as client:
                 response = await client.post(url, headers=headers, json={
-                    "model": settings.nova_model, "messages": messages, "tools": TOOLS, "tool_choice": "auto"
+                    "model": settings.nova_model, "messages": messages, "tools": active_tool_specs(), "tool_choice": "auto"
                 })
                 response.raise_for_status()
                 data = response.json()
@@ -165,8 +194,14 @@ async def ask_model(messages: list[dict[str, str]]) -> str:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1")
-    return {"status": "ok", "service": "NOVA", "version": "0.1.0",
+    return {"status": "ok", "service": "NOVA", "version": "0.2.0",
             "model_configured": bool(settings.nova_base_url and settings.nova_model)}
+
+
+@app.get("/v1/owner-policy")
+def owner_policy() -> dict[str, Any]:
+    """Read the active owner-editable policy; editing the JSON file changes behavior."""
+    return load_policy()
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
