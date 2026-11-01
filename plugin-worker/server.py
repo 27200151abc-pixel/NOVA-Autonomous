@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 PLUGIN_DIR = Path("/plugins")
 MAX_BODY = 16 * 1024
 MAX_TEXT = 100_000
+
+
+def is_authorized(auth_header: str | None, expected_token: str) -> bool:
+    if not expected_token or not auth_header:
+        return False
+    return secrets.compare_digest(auth_header, "Bearer " + expected_token)
 
 
 def execute(name: str, arguments: dict) -> dict:
@@ -19,6 +27,8 @@ def execute(name: str, arguments: dict) -> dict:
 
     # Explicit operation allowlist: no arbitrary plugin Python is imported.
     if manifest.get("operation") == "text_stats":
+        if set(arguments) != {"text"}:
+            raise ValueError("text_stats accepts only the text argument")
         value = arguments.get("text")
         if not isinstance(value, str) or len(value) > MAX_TEXT:
             raise ValueError("text must be a string of at most 100000 characters")
@@ -47,6 +57,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
+            expected_token = os.environ.get("PLUGIN_WORKER_TOKEN", "")
+            if not is_authorized(self.headers.get("Authorization"), expected_token):
+                self.send_error(401, "Unauthorized")
+                return
             length = int(self.headers.get("Content-Length", "0"))
             if length < 1 or length > MAX_BODY:
                 raise ValueError("Invalid request size")
