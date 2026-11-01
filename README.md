@@ -34,7 +34,8 @@ Edit `.env` and set:
 - `NOVA_MODEL`: model identifier accepted by that provider.
 - `NOVA_API_KEY`: provider key, if required.
 - `NOVA_CHAT_TOKEN`: a long random secret for chat API access.
-- `NOVA_OWNER_TOKEN`: a different long random secret for policy, memory, and approvals. Generate each independently with `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+- `NOVA_OWNER_TOKEN`: a different long random secret for policy, memory, and approvals.
+- `NOVA_PLUGIN_WORKER_TOKEN`: a third random secret shared only between the API and its plugin worker. Generate each independently with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
 
 Then start:
 
@@ -46,7 +47,7 @@ Open `http://127.0.0.1:8000/`. To review file-write approvals, open `http://127.
 
 ## Docker
 
-Copy `.env.example` to `.env`, configure the model and owner token, then run:
+Copy `.env.example` to `.env`, configure the model, chat and owner tokens, and generate `NOVA_PLUGIN_WORKER_TOKEN` with the command above. Docker Compose refuses to start without the worker secret. The API container runs as non-root with a read-only root filesystem, and the host port is bound to `127.0.0.1` only by default. Then run:
 
 ```bash
 docker compose up --build
@@ -71,7 +72,7 @@ This is application-level path restriction, not an operating-system sandbox. Kee
 
 ## Plugins
 
-The worker currently supports only the `text_stats` declarative operation; it does not import or execute arbitrary Python plugin code. Plugins remain disabled by default in `nova/policy.json`. To try the sample plugin, run Docker Compose, then add `text_stats` to `enabled_plugins`. The worker has no published host port and is attached only to an internal Docker network. Its container is read-only, non-root, drops all capabilities, disables privilege escalation, and has CPU, memory, PID, and temporary-filesystem limits. This is defense in depth, not a substitute for host/container security updates or independent security review.
+The worker currently supports only the `text_stats` declarative operation; it does not import or execute arbitrary Python plugin code. Plugins remain disabled by default in `nova/policy.json`. To try the sample plugin, run Docker Compose, then add `text_stats` to `enabled_plugins`. The worker has no published host port and is attached only to an internal Docker network. Calls require a shared bearer secret. Its container is read-only, non-root, drops all capabilities, disables privilege escalation, and has CPU, memory, PID, and temporary-filesystem limits. The API container is also non-root and read-only, with a localhost-only published port and resource limits. This is defense in depth, not a substitute for host/container security updates or independent security review.
 
 ## Development and tests
 
@@ -85,11 +86,11 @@ GitHub Actions is configured to run compile checks and tests on pushes and pull 
 
 ## Roadmap
 
-1. Continue runtime hardening, database reliability, and approval-workflow verification.
-2. Finish and verify the separate restricted plugin-worker container.
-3. Add controlled browser automation with explicit approval for external side effects.
-4. Improve memory retrieval and add import/export.
-5. Add streaming responses, then voice input/output and live visual interaction where a compatible model/provider supports them.
-6. Provide reproducible deployment and operational monitoring.
+1. Verify authenticated plugin execution and full Docker startup in CI.
+2. Add robust memory retrieval, conversation export, and retention controls.
+3. Add streaming responses and interrupt/cancel support.
+4. Add controlled browser automation with explicit approval for external side effects.
+5. Integrate voice input/output and live visual interaction through compatible browser and model interfaces.
+6. Provide remote deployment behind TLS, backup/restore, and operational monitoring.
 
 NOVA cannot provide unlimited free inference or compute. The owner chooses the model endpoint and remains subject to that provider's availability, limits, and terms.
