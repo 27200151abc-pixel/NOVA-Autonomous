@@ -362,6 +362,11 @@ def home() -> FileResponse:
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@app.get("/owner", include_in_schema=False)
+def owner_console() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "owner.html")
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     with db() as conn:
