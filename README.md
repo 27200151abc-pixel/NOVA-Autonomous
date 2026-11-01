@@ -2,9 +2,9 @@
 
 NOVA is an independent, provider-agnostic agent foundation. The project is designed to run locally or on a user-controlled host, with optional remote model inference through any OpenAI-compatible endpoint.
 
-> **Status:** Phase 2 foundation. Includes owner-enabled Python plugins, SQLite conversation memory search, and bounded multi-step tool execution. It is still an early agent runtime, not a finished autonomous system. Free hosting and free inference are quota-limited; no service is represented as unlimited.
+> **Status:** Phase 3 foundation. Includes a standalone chat UI, owner-authenticated approval queue, restricted workspace file tools, SQLite memory, and bounded multi-step tool execution. This remains an early agent runtime, not a finished autonomous assistant. Includes owner-enabled Python plugins, SQLite conversation memory search, and bounded multi-step tool execution. It is still an early agent runtime, not a finished autonomous system. Free hosting and free inference are quota-limited; no service is represented as unlimited.
 
-## Principles
+## Current release\n\nNOVA 0.4.0 exposes a browser chat at `/`, health at `/health`, API docs at `/docs`, and owner-only policy/memory/approval endpoints. File tools are confined to a dedicated workspace directory; writes require owner approval by default. A compatible model endpoint is still required for chat inference.\n\n## Principles
 - Open-source NOVA code (MIT); third-party models and services retain their own licenses and terms.
 - Provider-neutral model adapter: configure `NOVA_BASE_URL`, `NOVA_API_KEY`, and `NOVA_MODEL`.
 - Local SQLite conversation history with keyword search.
