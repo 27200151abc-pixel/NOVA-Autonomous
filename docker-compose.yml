@@ -1,0 +1,15 @@
+services:
+  nova:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - nova-data:/data
+    environment:
+      NOVA_DATABASE_PATH: /data/nova.sqlite3
+    restart: unless-stopped
+
+volumes:
+  nova-data:
