@@ -48,3 +48,26 @@ def test_worker_enforces_text_size_limit(tmp_path, monkeypatch):
         pass
     else:
         raise AssertionError("Oversized text must be rejected")
+
+
+
+def test_worker_requires_shared_secret():
+    assert server.is_authorized("Bearer correct-secret", "correct-secret")
+    assert not server.is_authorized("Bearer wrong-secret", "correct-secret")
+    assert not server.is_authorized(None, "correct-secret")
+    assert not server.is_authorized("Bearer anything", "")
+
+
+def test_text_stats_rejects_unexpected_arguments(tmp_path, monkeypatch):
+    (tmp_path / "text_stats.json").write_text(json.dumps({
+        "name": "text_stats",
+        "operation": "text_stats"
+    }), encoding="utf-8")
+    monkeypatch.setattr(server, "PLUGIN_DIR", tmp_path)
+
+    try:
+        server.execute("text_stats", {"text": "hello", "extra": "no"})
+    except ValueError as error:
+        assert "only the text argument" in str(error)
+    else:
+        raise AssertionError("Unexpected plugin arguments must be rejected")
