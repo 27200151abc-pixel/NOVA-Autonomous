@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-app = FastAPI(title="NOVA API", version="0.4.0", description="Provider-neutral, self-hostable AI agent foundation")
+app = FastAPI(title="NOVA API", version="0.4.1", description="Provider-neutral, self-hostable AI agent foundation")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in settings.nova_cors_origins.split(",") if x.strip()],
@@ -64,6 +64,8 @@ class ApprovalDecision(BaseModel):
 
 @contextmanager
 def db():
+    if settings.nova_database_path != ":memory:":
+        Path(settings.nova_database_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(settings.nova_database_path, timeout=15)
     try:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -103,7 +105,7 @@ def history(conversation_id: str) -> list[dict[str, str]]:
     with db() as conn:
         rows = conn.execute(
             "SELECT role, content FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
-            (conversation_id, settings.nova_max_history_messages),
+            (conversation_id, max(1, min(int(settings.nova_max_history_messages), 100))),
         ).fetchall()
     return [{"role": role, "content": content} for role, content in reversed(rows)]
 
@@ -386,7 +388,7 @@ def owner_console() -> FileResponse:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1")
-    return {"status": "ok", "service": "NOVA", "version": "0.4.0",
+    return {"status": "ok", "service": "NOVA", "version": "0.4.1",
             "model_configured": bool(settings.nova_base_url and settings.nova_model)}
 
 
