@@ -193,3 +193,14 @@ def test_owner_route_serves_console():
     assert response.status_code == 200
     assert "NOVA_OWNER_TOKEN" in response.text
     assert "approval" in response.text.lower()
+
+
+def test_chat_api_requires_separate_token(monkeypatch):
+    from fastapi import HTTPException
+    from nova import main
+
+    monkeypatch.setattr(main.settings, "nova_chat_token", "chat-secret")
+    with pytest.raises(HTTPException) as error:
+        main.require_chat("Bearer owner-secret")
+    assert error.value.status_code == 401
+    assert main.require_chat("Bearer chat-secret") is None
