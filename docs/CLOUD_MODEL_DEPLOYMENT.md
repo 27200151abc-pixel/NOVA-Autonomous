@@ -36,9 +36,9 @@ The override points NOVA to the private `model` service at `http://model:8000/v1
 
 ## Model choice
 
-The default is `Qwen/Qwen3-30B-A3B`: 35B total parameters with about 3B activated per token, multilingual support, reasoning modes, and tool-use support. Its Hugging Face model card lists Apache-2.0. The official Qwen3.6 model card lists Apache-2.0, native image input, and vLLM >=0.19.0 support. vLLM provides an OpenAI-compatible endpoint.
+The default is `Qwen/Qwen3.6-35B-A3B-FP8`: 35B total parameters with about 3B activated per token, multilingual support, reasoning modes, and tool-use support. Its Hugging Face model card lists Apache-2.0. The official Qwen3.6 model card lists Apache-2.0, native image input, and vLLM >=0.19.0 support. vLLM provides an OpenAI-compatible endpoint.
 
-If the selected GPU cannot load this checkpoint, use a smaller smaller Qwen checkpoint supported by your chosen inference engine by changing the model argument and `NOVA_MODEL` consistently. A smaller model is a capacity fallback, not an equivalent quality replacement.
+If the selected GPU cannot load this checkpoint, use a smaller Qwen checkpoint supported by your chosen inference engine by changing the model argument and `NOVA_MODEL` consistently. A smaller model is a capacity fallback, not an equivalent quality replacement.
 
 ## Security / owner control
 
