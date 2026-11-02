@@ -1,0 +1,48 @@
+name: Deploy NOVA to Hugging Face Space
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/huggingface-zerogpu/**"
+      - ".github/workflows/deploy-hf-space.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Hugging Face Hub
+        run: python -m pip install --upgrade huggingface_hub
+
+      - name: Publish Space files
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          token = os.environ.get("HF_TOKEN")
+          if not token:
+              raise SystemExit("Missing HF_TOKEN repository secret.")
+          api = HfApi(token=token)
+          api.upload_folder(
+              repo_id="01122434077Abdo/nova-autonomous-free",
+              repo_type="space",
+              folder_path="deploy/huggingface-zerogpu",
+              commit_message="Deploy NOVA ZeroGPU demo from GitHub",
+          )
+          print("Space files uploaded.")
+          PY
