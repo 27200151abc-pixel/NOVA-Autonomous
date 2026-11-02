@@ -82,6 +82,18 @@ python -m pytest -q
 
 GitHub Actions is configured to run compile checks and tests on pushes and pull requests to `main`. A successful run must be confirmed in the repository's Actions tab; the code changes alone do not prove the tests passed.
 
+## Cloud GPU inference (optional)
+
+NOVA can run its own open-weight model instead of depending on an external model API. See [the cloud model deployment guide](docs/CLOUD_MODEL_DEPLOYMENT.md). The optional `docker-compose.gpu.yml` profile uses vLLM with Qwen3.6-35B-A3B-FP8. It requires a cloud VM with a compatible NVIDIA GPU; it is not a free always-on hosting option. The model service stays private inside Docker networking.
+
+Start it with:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu up --build -d
+```
+
+NOVA's current chat interface is text-only. Although the selected model supports image input, image uploads and live camera/video are not implemented in the current API/UI yet.
+
 ## Roadmap
 
 1. Verify authenticated plugin execution and full Docker startup in CI.
