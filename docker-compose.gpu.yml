@@ -1,4 +1,10 @@
 services:
+  nova:
+    environment:
+      NOVA_BASE_URL: http://model:8000/v1
+      NOVA_MODEL: Qwen/Qwen3-30B-A3B
+      NOVA_API_KEY: ""
+
   # Optional self-hosted inference engine. Requires a cloud VM with an NVIDIA GPU
   # and the NVIDIA Container Toolkit. This service is NOT exposed publicly.
   model:
